@@ -2,6 +2,7 @@
 
 import json
 import hashlib
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import httpx
@@ -26,7 +27,7 @@ class DigestStats(BaseModel):
     """Statistics about the digest."""
     total_posts_analyzed: int
     unique_authors: int
-    total_engagement: int
+    total_engagement: float
     avg_engagement_per_post: float
 
 
@@ -143,6 +144,180 @@ class LLMClient:
         embedding_str = json.dumps(embedding)
         hash_obj = hashlib.sha256(embedding_str.encode())
         return hash_obj.hexdigest()
+
+    async def generate_embeddings_batch(
+        self,
+        texts: List[str],
+        batch_size: int = None
+    ) -> List[List[float]]:
+        """
+        Generate embeddings for multiple texts in batched API calls.
+
+        GLM embedding-3 supports:
+        - Max 64 items per request
+        - Max 3072 tokens per item
+
+        Args:
+            texts: List of texts to embed
+            batch_size: Items per API call (default from settings, max 64)
+
+        Returns:
+            List of embedding vectors (same order as input texts)
+
+        Raises:
+            Exception: If embedding generation fails after retries
+        """
+        if batch_size is None:
+            batch_size = getattr(settings, 'LLM_EMBEDDING_BATCH_SIZE', 64)
+
+        # Validate batch size
+        batch_size = min(batch_size, 64)  # GLM max is 64
+
+        all_embeddings = []
+        total_batches = (len(texts) + batch_size - 1) // batch_size
+
+        logger.info(
+            f"Starting batch embedding generation",
+            extra={
+                "total_texts": len(texts),
+                "batch_size": batch_size,
+                "total_batches": total_batches
+            }
+        )
+
+        # Process in chunks of batch_size
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+
+            logger.info(
+                f"Processing batch {batch_num}/{total_batches} ({len(batch)} items)"
+            )
+
+            # Truncate long texts to fit token limit
+            truncated_batch = [text[:1000] for text in batch]
+
+            # Make API call with retry
+            data = await self._api_call_with_retry(
+                url=f"{self.embedding_base_url}/embeddings",
+                json_data={
+                    "model": self.embedding_model,
+                    "input": truncated_batch  # Array instead of string
+                }
+            )
+
+            # Extract embeddings in order
+            embeddings = [item["embedding"] for item in data["data"]]
+            all_embeddings.extend(embeddings)
+
+            logger.debug(
+                f"Batch {batch_num}/{total_batches} completed",
+                extra={"embeddings_count": len(embeddings)}
+            )
+
+        logger.info(
+            f"Batch embedding generation completed",
+            extra={"total_embeddings": len(all_embeddings)}
+        )
+
+        return all_embeddings
+
+    async def generate_embedding_hashes_batch(
+        self,
+        texts: List[str],
+        batch_size: int = None
+    ) -> List[Optional[str]]:
+        """
+        Generate embedding hashes for multiple texts using batched API calls.
+
+        Args:
+            texts: List of texts to hash
+            batch_size: Items per API call (default from settings)
+
+        Returns:
+            List of SHA256 hashes (same order as input texts)
+            Returns None for texts that failed to embed
+        """
+        try:
+            embeddings = await self.generate_embeddings_batch(texts, batch_size)
+
+            # Convert each embedding to hash
+            hashes = []
+            for embedding in embeddings:
+                embedding_str = json.dumps(embedding)
+                hash_obj = hashlib.sha256(embedding_str.encode())
+                hashes.append(hash_obj.hexdigest())
+
+            return hashes
+
+        except Exception as e:
+            logger.error(f"Batch embedding hash generation failed: {e}")
+            # Return None for all texts on failure
+            return [None] * len(texts)
+
+    async def _api_call_with_retry(
+        self,
+        url: str,
+        json_data: dict,
+        max_retries: int = None,
+        initial_backoff: float = None
+    ) -> dict:
+        """
+        Make API call with exponential backoff retry on rate limits.
+
+        Args:
+            url: API endpoint URL
+            json_data: Request payload
+            max_retries: Maximum retry attempts (default from settings)
+            initial_backoff: Initial backoff in seconds (default from settings)
+
+        Returns:
+            API response JSON
+
+        Raises:
+            Exception: If all retries exhausted or non-retryable error
+        """
+        if max_retries is None:
+            max_retries = getattr(settings, 'LLM_EMBEDDING_RETRY_MAX_ATTEMPTS', 5)
+        if initial_backoff is None:
+            initial_backoff = getattr(settings, 'LLM_EMBEDDING_RETRY_INITIAL_BACKOFF', 1.0)
+
+        backoff = initial_backoff
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.post(
+                    url,
+                    json=json_data,
+                    headers={
+                        "Authorization": f"Bearer {self.embedding_api_key}"
+                    }
+                )
+                response.raise_for_status()
+                return response.json()
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:  # Rate limit
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Rate limited (429), retrying in {backoff}s "
+                            f"(attempt {attempt + 1}/{max_retries + 1})"
+                        )
+                        await asyncio.sleep(backoff)
+                        backoff *= 2  # Exponential: 1s, 2s, 4s, 8s, 16s
+                        continue
+                    else:
+                        logger.error(f"Rate limit (429) - all retries exhausted")
+                        raise
+                else:
+                    # Non-rate-limit error, don't retry
+                    logger.error(f"HTTP error {e.response.status_code}: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"API call failed: {e}")
+                raise
+
+        raise Exception(f"Failed after {max_retries + 1} attempts")
 
     async def generate_digest(
         self,

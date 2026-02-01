@@ -115,21 +115,25 @@ async def _collect_data_async(self, topic_id: str):
                     "items_collected": 0
                 }
 
-            # 4. Process items with deduplication
+            # 4. Process items with deduplication using batch embeddings
             llm_client = LLMClient()
             new_items = []
             duplicates = 0
 
-            for raw_item in raw_items:
-                # Generate embedding hash
-                try:
-                    embedding_hash = await llm_client.generate_embedding_hash(raw_item.text)
-                except Exception as e:
-                    logger.warning(f"Failed to generate embedding: {e}")
-                    # Use None if embedding generation fails
-                    embedding_hash = None
+            # Generate embeddings in batch for all items
+            texts = [raw_item.text for raw_item in raw_items]
+            logger.info(f"Generating embeddings for {len(texts)} items in batch")
 
-                # Check for duplicate by source_id or embedding_hash
+            try:
+                embedding_hashes = await llm_client.generate_embedding_hashes_batch(texts)
+            except Exception as e:
+                logger.error(f"Batch embedding generation failed: {e}")
+                # Fall back to None for all hashes
+                embedding_hashes = [None] * len(texts)
+
+            # Process each item with its embedding hash
+            for raw_item, embedding_hash in zip(raw_items, embedding_hashes):
+                # Check for duplicate by source_id
                 existing = await session.execute(
                     select(Item).where(
                         and_(
@@ -154,6 +158,9 @@ async def _collect_data_async(self, topic_id: str):
                     )
                     if existing.scalar_one_or_none():
                         duplicates += 1
+                        logger.debug(
+                            f"Duplicate found via embedding hash: {raw_item.source_id}"
+                        )
                         continue
 
                 # Create new item
@@ -164,7 +171,7 @@ async def _collect_data_async(self, topic_id: str):
                     text=raw_item.text,
                     url=raw_item.url,
                     created_at=raw_item.created_at,
-                    collected_at=datetime.utcnow(),
+                    collected_at=datetime.now(UTC),
                     media_urls=raw_item.media_urls if raw_item.media_urls else None,
                     metrics=raw_item.metrics if raw_item.metrics else None,
                     embedding_hash=embedding_hash
@@ -483,7 +490,7 @@ async def _notify_async(self, digest_id: str):
 
                         # Update delivery status
                         delivery.status = "success"
-                        delivery.sent_at = datetime.utcnow()
+                        delivery.sent_at = datetime.now(UTC)
                         successful += 1
                         deliveries_created += 1
 

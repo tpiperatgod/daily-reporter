@@ -43,8 +43,8 @@ You must respond with valid JSON in this exact format:
   "stats": {{
     "total_posts_analyzed": 0,
     "unique_authors": 0,
-    "total_engagement": 0,
-    "avg_engagement_per_post": 0
+    "total_engagement": 0.0,
+    "avg_engagement_per_post": 0.0
   }}
 }}
 ```
