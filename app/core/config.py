@@ -28,10 +28,22 @@ class Settings(BaseSettings):
     LLM_CHAT_MODEL: str
     LLM_CHAT_API_KEY: str
 
-    # LLM Embedding API Configuration (for deduplication)
-    LLM_EMBEDDING_BASE_URL: str
-    LLM_EMBEDDING_MODEL: str
-    LLM_EMBEDDING_API_KEY: str
+    # Embedding Provider Selection
+    LLM_EMBEDDING_PROVIDER: str = "openai"  # "openai" or "ollama"
+
+    # OpenAI-Compatible Embedding Provider (GLM, OpenAI, etc.)
+    OPENAI_EMBEDDING_BASE_URL: Optional[str] = None
+    OPENAI_EMBEDDING_MODEL: Optional[str] = None
+    OPENAI_EMBEDDING_API_KEY: Optional[str] = None
+
+    # Ollama Embedding Provider
+    OLLAMA_EMBEDDING_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_EMBEDDING_MODEL: str = "bge-m3:567m"
+
+    # Backward compatibility aliases
+    LLM_EMBEDDING_BASE_URL: Optional[str] = None
+    LLM_EMBEDDING_MODEL: Optional[str] = None
+    LLM_EMBEDDING_API_KEY: Optional[str] = None
 
     # LLM Shared Configuration
     LLM_MAX_TOKENS: int = 12000

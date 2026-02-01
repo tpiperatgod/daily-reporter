@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, validator
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.services.llm.prompts import build_digest_prompt
+from app.services.embedding.base import BaseEmbeddingProvider
 
 logger = get_logger(__name__)
 
@@ -52,26 +53,29 @@ class LLMClient:
     Client for interacting with LLM APIs (DeepSeek/OpenAI-compatible).
 
     Handles:
-    - Embedding generation for semantic deduplication
+    - Embedding generation for semantic deduplication (via provider)
     - Digest generation with structured JSON output
     """
 
-    def __init__(self):
-        """Initialize the LLM client."""
+    def __init__(self, embedding_provider: BaseEmbeddingProvider):
+        """
+        Initialize the LLM client.
+
+        Args:
+            embedding_provider: Embedding provider to use for generating embeddings
+        """
         # Chat API configuration
         self.chat_base_url = settings.LLM_CHAT_BASE_URL.rstrip('/')
         self.chat_model = settings.LLM_CHAT_MODEL
         self.chat_api_key = settings.LLM_CHAT_API_KEY
 
-        # Embedding API configuration
-        self.embedding_base_url = settings.LLM_EMBEDDING_BASE_URL.rstrip('/')
-        self.embedding_model = settings.LLM_EMBEDDING_MODEL
-        self.embedding_api_key = settings.LLM_EMBEDDING_API_KEY
+        # Embedding provider (injected dependency)
+        self.embedding_provider = embedding_provider
 
         # Shared configuration
         self.max_tokens = settings.LLM_MAX_TOKENS
 
-        # HTTP client - no default Authorization header
+        # HTTP client for chat API - no default Authorization header
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(60.0),
             headers={
@@ -84,14 +88,15 @@ class LLMClient:
             extra={
                 "chat_base_url": self.chat_base_url,
                 "chat_model": self.chat_model,
-                "embedding_base_url": self.embedding_base_url,
-                "embedding_model": self.embedding_model
+                "embedding_provider": type(embedding_provider).__name__
             }
         )
 
     async def generate_embedding(self, text: str) -> List[float]:
         """
         Generate an embedding vector for the given text.
+
+        Delegates to the configured embedding provider.
 
         Args:
             text: Text to generate embedding for
@@ -102,31 +107,7 @@ class LLMClient:
         Raises:
             Exception: If embedding generation fails
         """
-        try:
-            response = await self.client.post(
-                f"{self.embedding_base_url}/embeddings",
-                json={
-                    "model": self.embedding_model,
-                    "input": text[:1000]  # Truncate very long text
-                },
-                headers={
-                    "Authorization": f"Bearer {self.embedding_api_key}"
-                }
-            )
-
-            response.raise_for_status()
-            data = response.json()
-
-            # Extract embedding from response (OpenAI-compatible format)
-            embedding = data["data"][0]["embedding"]
-
-            logger.debug(f"Generated embedding for text (length: {len(text)})")
-
-            return embedding
-
-        except Exception as e:
-            logger.error(f"Failed to generate embedding: {e}")
-            raise
+        return await self.embedding_provider.generate_embedding(text)
 
     async def generate_embedding_hash(self, text: str) -> str:
         """
@@ -153,13 +134,11 @@ class LLMClient:
         """
         Generate embeddings for multiple texts in batched API calls.
 
-        GLM embedding-3 supports:
-        - Max 64 items per request
-        - Max 3072 tokens per item
+        Delegates to the configured embedding provider.
 
         Args:
             texts: List of texts to embed
-            batch_size: Items per API call (default from settings, max 64)
+            batch_size: Items per API call (default from settings)
 
         Returns:
             List of embedding vectors (same order as input texts)
@@ -168,59 +147,11 @@ class LLMClient:
             Exception: If embedding generation fails after retries
         """
         if batch_size is None:
-            batch_size = getattr(settings, 'LLM_EMBEDDING_BATCH_SIZE', 64)
+            batch_size = settings.LLM_EMBEDDING_BATCH_SIZE
 
-        # Validate batch size
-        batch_size = min(batch_size, 64)  # GLM max is 64
-
-        all_embeddings = []
-        total_batches = (len(texts) + batch_size - 1) // batch_size
-
-        logger.info(
-            f"Starting batch embedding generation",
-            extra={
-                "total_texts": len(texts),
-                "batch_size": batch_size,
-                "total_batches": total_batches
-            }
+        return await self.embedding_provider.generate_embeddings_batch(
+            texts, batch_size
         )
-
-        # Process in chunks of batch_size
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            batch_num = (i // batch_size) + 1
-
-            logger.info(
-                f"Processing batch {batch_num}/{total_batches} ({len(batch)} items)"
-            )
-
-            # Truncate long texts to fit token limit
-            truncated_batch = [text[:1000] for text in batch]
-
-            # Make API call with retry
-            data = await self._api_call_with_retry(
-                url=f"{self.embedding_base_url}/embeddings",
-                json_data={
-                    "model": self.embedding_model,
-                    "input": truncated_batch  # Array instead of string
-                }
-            )
-
-            # Extract embeddings in order
-            embeddings = [item["embedding"] for item in data["data"]]
-            all_embeddings.extend(embeddings)
-
-            logger.debug(
-                f"Batch {batch_num}/{total_batches} completed",
-                extra={"embeddings_count": len(embeddings)}
-            )
-
-        logger.info(
-            f"Batch embedding generation completed",
-            extra={"total_embeddings": len(all_embeddings)}
-        )
-
-        return all_embeddings
 
     async def generate_embedding_hashes_batch(
         self,
@@ -254,70 +185,6 @@ class LLMClient:
             logger.error(f"Batch embedding hash generation failed: {e}")
             # Return None for all texts on failure
             return [None] * len(texts)
-
-    async def _api_call_with_retry(
-        self,
-        url: str,
-        json_data: dict,
-        max_retries: int = None,
-        initial_backoff: float = None
-    ) -> dict:
-        """
-        Make API call with exponential backoff retry on rate limits.
-
-        Args:
-            url: API endpoint URL
-            json_data: Request payload
-            max_retries: Maximum retry attempts (default from settings)
-            initial_backoff: Initial backoff in seconds (default from settings)
-
-        Returns:
-            API response JSON
-
-        Raises:
-            Exception: If all retries exhausted or non-retryable error
-        """
-        if max_retries is None:
-            max_retries = getattr(settings, 'LLM_EMBEDDING_RETRY_MAX_ATTEMPTS', 5)
-        if initial_backoff is None:
-            initial_backoff = getattr(settings, 'LLM_EMBEDDING_RETRY_INITIAL_BACKOFF', 1.0)
-
-        backoff = initial_backoff
-
-        for attempt in range(max_retries + 1):
-            try:
-                response = await self.client.post(
-                    url,
-                    json=json_data,
-                    headers={
-                        "Authorization": f"Bearer {self.embedding_api_key}"
-                    }
-                )
-                response.raise_for_status()
-                return response.json()
-
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429:  # Rate limit
-                    if attempt < max_retries:
-                        logger.warning(
-                            f"Rate limited (429), retrying in {backoff}s "
-                            f"(attempt {attempt + 1}/{max_retries + 1})"
-                        )
-                        await asyncio.sleep(backoff)
-                        backoff *= 2  # Exponential: 1s, 2s, 4s, 8s, 16s
-                        continue
-                    else:
-                        logger.error(f"Rate limit (429) - all retries exhausted")
-                        raise
-                else:
-                    # Non-rate-limit error, don't retry
-                    logger.error(f"HTTP error {e.response.status_code}: {e}")
-                    raise
-            except Exception as e:
-                logger.error(f"API call failed: {e}")
-                raise
-
-        raise Exception(f"Failed after {max_retries + 1} attempts")
 
     async def generate_digest(
         self,

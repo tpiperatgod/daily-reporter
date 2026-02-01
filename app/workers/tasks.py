@@ -15,6 +15,7 @@ from app.db.models import Topic, Item, Digest, Delivery, Subscription, User
 from app.services.provider.factory import get_provider
 from app.services.provider.base import RawItem
 from app.services.llm.client import LLMClient
+from app.services.embedding.factory import get_embedding_provider
 from app.services.notifier.renderer import render_markdown_digest
 
 logger = get_logger(__name__)
@@ -116,7 +117,8 @@ async def _collect_data_async(self, topic_id: str):
                 }
 
             # 4. Process items with deduplication using batch embeddings
-            llm_client = LLMClient()
+            embedding_provider = get_embedding_provider()
+            llm_client = LLMClient(embedding_provider=embedding_provider)
             new_items = []
             duplicates = 0
 
@@ -317,7 +319,8 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
             ]
 
             # 3. Generate digest with LLM
-            llm_client = LLMClient()
+            embedding_provider = get_embedding_provider()
+            llm_client = LLMClient(embedding_provider=embedding_provider)
             digest_result = await llm_client.generate_digest(
                 topic=topic.name,
                 items=items_dict,
