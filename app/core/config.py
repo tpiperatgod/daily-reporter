@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     SMTP_USER: str
     SMTP_PASSWORD: str
     FROM_EMAIL: str
+    EMAIL_LOG_ONLY: bool = True  # Set to False to send actual emails (defaults to True for safety)
 
     # Application
     LOG_LEVEL: str = "INFO"

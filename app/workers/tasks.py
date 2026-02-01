@@ -6,11 +6,11 @@ from datetime import datetime, timedelta, UTC
 from typing import List
 from celery import current_task
 from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.workers.celery_app import celery_app
 from app.core.logging import get_logger
-from app.db.session import AsyncSessionLocal
 from app.db.models import Topic, Item, Digest, Delivery, Subscription, User
 from app.services.provider.factory import get_provider
 from app.services.provider.base import RawItem
@@ -46,8 +46,10 @@ def collect_data(self, topic_id: str):
 
 async def _collect_data_async(self, topic_id: str):
     """Async implementation of collect_data task."""
+    from app.db.session import get_async_session_local
+
     try:
-        async with AsyncSessionLocal() as session:
+        async with get_async_session_local()() as session:
             # 1. Load topic
             topic_result = await session.execute(
                 select(Topic).where(Topic.id == topic_id)
@@ -273,8 +275,10 @@ def generate_digest(self, topic_id: str, window_start: str, window_end: str):
 
 async def _generate_digest_async(self, topic_id: str, window_start: str, window_end: str):
     """Async implementation of generate_digest task."""
+    from app.db.session import get_async_session_local
+
     try:
-        async with AsyncSessionLocal() as session:
+        async with get_async_session_local()() as session:
             # 1. Load topic
             topic_result = await session.execute(
                 select(Topic).where(Topic.id == topic_id)
@@ -406,14 +410,17 @@ def notify(self, digest_id: str):
 
 async def _notify_async(self, digest_id: str):
     """Async implementation of notify task."""
+    from app.db.session import get_async_session_local
     from app.services.notifier.feishu import FeishuNotifier
     from app.services.notifier.email import EmailNotifier
 
     try:
-        async with AsyncSessionLocal() as session:
-            # 1. Load digest with topic
+        async with get_async_session_local()() as session:
+            # 1. Load digest with topic (eager load to prevent MissingGreenlet)
             digest_result = await session.execute(
-                select(Digest).where(Digest.id == digest_id)
+                select(Digest)
+                .where(Digest.id == digest_id)
+                .options(selectinload(Digest.topic))
             )
             digest = digest_result.scalar_one_or_none()
 
@@ -441,7 +448,7 @@ async def _notify_async(self, digest_id: str):
             logger.info(f"Found {len(subscriptions)} subscriptions")
 
             # 3. Send notifications
-            feishu_notifier = FeishuNotifier()
+            feishu_notifier = FeishuNotifier(log_only=False)
             email_notifier = EmailNotifier()
 
             deliveries_created = 0

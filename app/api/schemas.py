@@ -232,6 +232,37 @@ class DeliveryResponse(BaseModel):
 
 
 # ============================================================================
+# Send Digest Schemas
+# ============================================================================
+
+class SendDigestRequest(BaseModel):
+    """Schema for manually sending digest to a subscription."""
+    subscription_id: UUID
+
+
+class SendDigestDelivery(BaseModel):
+    """Schema for delivery info in send digest response."""
+    id: UUID
+    channel: str
+    status: str
+    sent_at: Optional[datetime]
+    error_msg: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class SendDigestResponse(BaseModel):
+    """Schema for send digest response."""
+    digest_id: UUID
+    subscription_id: UUID
+    deliveries: List[SendDigestDelivery]
+    total_sent: int
+    successful: int
+    failed: int
+
+
+# ============================================================================
 # Trigger Response Schemas
 # ============================================================================
 

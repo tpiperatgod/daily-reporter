@@ -10,6 +10,7 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
+from app.core.config import settings
 from app.db.models import Digest, User, Delivery
 from app.services.notifier.feishu import FeishuNotifier
 from app.services.notifier.email import EmailNotifier
@@ -45,7 +46,7 @@ async def send_digest_to_user(
                    stop the function. Status is set to "failed" in delivery record.
     """
     feishu_notifier = FeishuNotifier(log_only=False)
-    email_notifier = EmailNotifier()
+    email_notifier = EmailNotifier(log_only=settings.EMAIL_LOG_ONLY)
 
     deliveries = []
 
