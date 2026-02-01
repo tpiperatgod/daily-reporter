@@ -15,6 +15,7 @@ class UserCreate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     email: EmailStr
     feishu_webhook_url: Optional[str] = Field(None, max_length=2048)
+    feishu_webhook_secret: Optional[str] = Field(None, max_length=255, description="HMAC secret for Feishu webhook signature verification")
 
 
 class UserResponse(BaseModel):
@@ -23,6 +24,7 @@ class UserResponse(BaseModel):
     name: Optional[str]
     email: str
     feishu_webhook_url: Optional[str]
+    feishu_webhook_secret: Optional[str] = Field(None, description="HMAC secret for Feishu webhook (masked for security)")
     created_at: datetime
 
     class Config:

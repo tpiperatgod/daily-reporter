@@ -14,7 +14,7 @@ from app.db.session import AsyncSessionLocal
 from app.db.models import Topic, Item, Digest, Delivery, Subscription, User
 from app.services.provider.factory import get_provider
 from app.services.provider.base import RawItem
-from app.services.llm.client import LLMClient
+from app.services.llm.client import LLMClient, DigestResult
 from app.services.embedding.factory import get_embedding_provider
 from app.services.notifier.renderer import render_markdown_digest
 
@@ -215,6 +215,8 @@ async def _collect_data_async(self, topic_id: str):
             # 7. Chain to generate_digest if we have new items
             if new_items:
                 logger.info("Chaining to generate_digest task")
+                # Capture end_date AFTER insertion to ensure all items are within window
+                end_date = datetime.now(UTC)
                 generate_digest.delay(
                     topic_id=topic_id,
                     window_start=start_date.isoformat(),
@@ -381,7 +383,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
 
 
 @celery_app.task(bind=True, name="app.workers.tasks.notify", max_retries=2)
-def notify(digest_id: str):
+def notify(self, digest_id: str):
     """
     Send notifications for a digest.
 
@@ -477,10 +479,14 @@ async def _notify_async(self, digest_id: str):
                                 continue
 
                             # Send Feishu notification
+                            # Parse DigestResult from summary_json
+                            digest_result = DigestResult(**digest.summary_json)
+
                             await feishu_notifier.send(
                                 webhook_url=user.feishu_webhook_url,
-                                title=f"Digest: {topic.name}",
-                                content=digest.rendered_content
+                                digest_result=digest_result,
+                                topic_name=topic.name,
+                                webhook_secret=user.feishu_webhook_secret if hasattr(user, 'feishu_webhook_secret') else None
                             )
 
                         elif channel == "email":

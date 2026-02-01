@@ -4,9 +4,15 @@ For development, this logs the notification content instead of
 sending actual webhook calls.
 """
 
+import time
+import hmac
+import hashlib
+import base64
+from typing import Optional, Dict, Any, List
 import httpx
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.services.llm.client import DigestResult
 
 logger = get_logger(__name__)
 
@@ -29,14 +35,170 @@ class FeishuNotifier:
         if not log_only:
             self.client = httpx.AsyncClient(timeout=30.0)
 
-    async def send(self, webhook_url: str, title: str, content: str):
+    def _gen_sign(self, timestamp: int, secret: str) -> str:
+        """Generate HMAC-SHA256 signature for webhook security."""
+        string_to_sign = f'{timestamp}\n{secret}'
+        hmac_code = hmac.new(
+            string_to_sign.encode("utf-8"),
+            digestmod=hashlib.sha256
+        ).digest()
+        sign = base64.b64encode(hmac_code).decode('utf-8')
+        return sign
+
+    def _format_number(self, num: float) -> str:
+        """Format numbers with K/M suffixes (e.g., 53807.5 -> 53.8K)."""
+        if num >= 1000000:
+            return f"{num/1000000:.1f}M"
+        if num >= 1000:
+            return f"{num/1000:.1f}K"
+        return f"{int(num)}"
+
+    def _get_sentiment_color(self, sentiment: str) -> str:
+        """Map sentiment to Feishu card header color."""
+        mapping = {
+            "positive": "green",
+            "negative": "red",
+            "mixed": "orange",
+            "neutral": "grey"
+        }
+        return mapping.get(sentiment.lower(), "blue")
+
+    def _build_rich_card(
+        self,
+        digest_result: DigestResult,
+        topic_name: str
+    ) -> Dict[str, Any]:
         """
-        Send a notification to Feishu.
+        Build Feishu rich interactive card from DigestResult.
+
+        Based on design from demos/feishu-api.md.
+        """
+        stats = digest_result.stats
+        highlights = digest_result.highlights
+
+        # 1. Statistics dashboard (multi-column layout with fields)
+        stats_fields = [
+            {
+                "is_short": True,
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**Total Posts**\n{stats.total_posts_analyzed}"
+                }
+            },
+            {
+                "is_short": True,
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**Engagement**\n{self._format_number(stats.total_engagement)}"
+                }
+            },
+            {
+                "is_short": True,
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**Authors**\n{stats.unique_authors}"
+                }
+            },
+            {
+                "is_short": True,
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**Avg/Post**\n{self._format_number(stats.avg_engagement_per_post)}"
+                }
+            }
+        ]
+
+        # 2. Theme tags
+        theme_str = "  ".join([f"🏷️ {theme}" for theme in digest_result.themes])
+
+        # 3. Build elements list
+        elements = [
+            # Statistics module
+            {
+                "tag": "div",
+                "fields": stats_fields
+            },
+            {"tag": "hr"},  # Separator
+            # Themes module
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**Themes:**\n{theme_str}"
+                }
+            }
+        ]
+
+        # 4. Add highlights with dynamic score icons
+        for idx, highlight in enumerate(highlights):
+            # Score-based icon
+            score_icon = "🔥" if highlight.score >= 9 else "⭐" if highlight.score >= 7 else "📝"
+
+            # Build source links
+            links_md = [
+                f"[Source {i+1}]({url})"
+                for i, url in enumerate(highlight.representative_urls)
+            ]
+            links_str = " | ".join(links_md)
+
+            # Formatted highlight text
+            summary_text = (
+                f"{score_icon} **{highlight.title}** (Score: {highlight.score})\n"
+                f"{highlight.summary}\n"
+                f"🔗 {links_str}"
+            )
+
+            # Add separator before first highlight
+            if idx == 0:
+                elements.append({"tag": "hr"})
+
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": summary_text
+                }
+            })
+
+        # 5. Footer with metadata
+        elements.append({
+            "tag": "note",
+            "elements": [{
+                "tag": "plain_text",
+                "content": f"Generated for {topic_name} • Powered by AI Digest"
+            }]
+        })
+
+        # 6. Assemble final card
+        card = {
+            "config": {"wide_screen_mode": True},  # Enable wide screen
+            "header": {
+                "template": self._get_sentiment_color(digest_result.sentiment),
+                "title": {
+                    "tag": "plain_text",
+                    "content": digest_result.headline
+                }
+            },
+            "elements": elements
+        }
+
+        return card
+
+    async def send(
+        self,
+        webhook_url: str,
+        digest_result: DigestResult,
+        topic_name: str,
+        webhook_secret: Optional[str] = None
+    ):
+        """
+        Send rich card notification to Feishu webhook.
 
         Args:
             webhook_url: Feishu webhook URL
-            title: Notification title
-            content: Markdown content
+            digest_result: DigestResult with headline, sentiment, themes, highlights, stats
+            topic_name: Topic name for footer
+            webhook_secret: Optional webhook secret for HMAC signature
 
         Raises:
             Exception: If sending fails
@@ -44,67 +206,50 @@ class FeishuNotifier:
         if self.log_only:
             # Development mode: log instead of sending
             logger.info(
-                f"[Feishu - LOG MODE] Would send notification",
+                f"[Feishu - LOG MODE] Would send rich card",
                 extra={
                     "webhook_url": webhook_url[:50] + "..." if len(webhook_url) > 50 else webhook_url,
-                    "title": title,
-                    "content_length": len(content),
-                    "content_preview": content[:200] + "..." if len(content) > 200 else content
+                    "headline": digest_result.headline,
+                    "sentiment": digest_result.sentiment,
+                    "highlights_count": len(digest_result.highlights),
+                    "themes": digest_result.themes
                 }
             )
             return
 
         # Production mode: send actual webhook
         try:
-            # Build Feishu card message
-            card = {
+            # Build rich card
+            card_content = self._build_rich_card(digest_result, topic_name)
+
+            # Prepare payload
+            current_ts = int(time.time())
+            payload = {
+                "timestamp": current_ts,
                 "msg_type": "interactive",
-                "card": {
-                    "header": {
-                        "title": {
-                            "tag": "plain_text",
-                            "content": title
-                        }
-                    },
-                    "elements": [
-                        {
-                            "tag": "div",
-                            "text": {
-                                "tag": "lark_md",
-                                "content": content
-                            }
-                        },
-                        {
-                            "tag": "div",
-                            "text": {
-                                "tag": "plain_text",
-                                "content": f"Sent at: {self._get_timestamp()}"
-                            }
-                        }
-                    ]
-                }
+                "card": card_content
             }
 
+            # Add signature if secret provided
+            if webhook_secret:
+                payload["sign"] = self._gen_sign(current_ts, webhook_secret)
+
             # Send webhook
-            response = await self.client.post(webhook_url, json=card)
+            response = await self.client.post(webhook_url, json=payload)
             response.raise_for_status()
 
             logger.info(
-                f"Feishu notification sent successfully",
+                f"Feishu rich card sent successfully",
                 extra={
                     "webhook_url": webhook_url[:50],
-                    "title": title
+                    "headline": digest_result.headline,
+                    "sentiment": digest_result.sentiment
                 }
             )
 
         except Exception as e:
             logger.error(f"Failed to send Feishu notification: {e}")
             raise
-
-    def _get_timestamp(self) -> str:
-        """Get current timestamp."""
-        from datetime import datetime
-        return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
     async def close(self):
         """Close the HTTP client."""

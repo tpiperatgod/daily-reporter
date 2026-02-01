@@ -57,7 +57,8 @@ async def create_user(
     user = User(
         name=user_data.name,
         email=user_data.email,
-        feishu_webhook_url=user_data.feishu_webhook_url
+        feishu_webhook_url=user_data.feishu_webhook_url,
+        feishu_webhook_secret=user_data.feishu_webhook_secret
     )
     db.add(user)
     await db.commit()
@@ -200,6 +201,7 @@ async def update_user(
     # Update fields
     user.name = user_data.name
     user.feishu_webhook_url = user_data.feishu_webhook_url
+    user.feishu_webhook_secret = user_data.feishu_webhook_secret
 
     await db.commit()
     await db.refresh(user)
