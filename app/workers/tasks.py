@@ -1,7 +1,8 @@
 """Celery tasks for the X-News-Digest pipeline."""
 
 import asyncio
-from datetime import datetime, timedelta
+import inspect
+from datetime import datetime, timedelta, UTC
 from typing import List
 from celery import current_task
 from sqlalchemy import select, and_
@@ -66,7 +67,7 @@ async def _collect_data_async(self, topic_id: str):
             )
 
             # 2. Calculate time window
-            end_date = datetime.utcnow()
+            end_date = datetime.now(UTC)
             if topic.last_collection_timestamp:
                 # Use last collection timestamp
                 start_date = topic.last_collection_timestamp
@@ -84,12 +85,23 @@ async def _collect_data_async(self, topic_id: str):
 
             # 3. Fetch items from provider
             provider = get_provider()
-            raw_items = await provider.fetch(
-                query=topic.query,
-                start_date=start_date,
-                end_date=end_date,
-                max_items=100
-            )
+
+            # Check if provider supports since_id parameter
+            fetch_kwargs = {
+                "query": topic.query,
+                "start_date": start_date,
+                "end_date": end_date,
+                "max_items": 100
+            }
+
+            # Add since_id if available and provider supports it
+            if topic.last_tweet_id:
+                sig = inspect.signature(provider.fetch)
+                if 'since_id' in sig.parameters:
+                    fetch_kwargs['since_id'] = topic.last_tweet_id
+                    logger.info(f"Using since_id: {topic.last_tweet_id}")
+
+            raw_items = await provider.fetch(**fetch_kwargs)
 
             logger.info(f"Fetched {len(raw_items)} items from provider")
 
@@ -167,8 +179,26 @@ async def _collect_data_async(self, topic_id: str):
             else:
                 logger.info("No new items after deduplication")
 
-            # 6. Update last_collection_timestamp
+            # 6. Update last_collection_timestamp and last_tweet_id
             topic.last_collection_timestamp = end_date
+
+            # Track highest tweet ID (Twitter IDs are chronological integers)
+            if raw_items:
+                max_tweet_id = None
+                for raw_item in raw_items:
+                    try:
+                        # Compare tweet IDs as integers
+                        current_id = int(raw_item.source_id)
+                        if max_tweet_id is None or current_id > max_tweet_id:
+                            max_tweet_id = current_id
+                    except ValueError:
+                        # Skip non-numeric IDs
+                        continue
+
+                if max_tweet_id is not None:
+                    topic.last_tweet_id = str(max_tweet_id)
+                    logger.info(f"Updated last_tweet_id to: {topic.last_tweet_id}")
+
             await session.commit()
 
             await llm_client.close()

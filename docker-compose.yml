@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: xnews_password
       POSTGRES_DB: xnews_digest
     ports:
-      - "5432:5432"
+      - "5433:5432"  # 使用 5433 避免端口冲突
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,9 +34,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: x-news-app
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
@@ -58,9 +62,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: x-news-worker
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,9 +83,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: x-news-beat
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy

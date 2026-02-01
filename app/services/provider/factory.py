@@ -1,6 +1,6 @@
 from app.services.provider.base import BaseProvider
 from app.services.provider.mock_adapter import MockAdapter
-from app.services.provider.apify_adapter import ApifyAdapter
+from app.services.provider.twitter_adapter import TwitterAPIAdapter
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -12,24 +12,24 @@ def get_provider() -> BaseProvider:
     Factory function to get the appropriate provider instance.
 
     Returns the provider based on the X_PROVIDER setting:
-    - "APIFY": Returns ApifyAdapter (requires APIFY_API_TOKEN)
+    - "TWITTER_API": Returns TwitterAPIAdapter (requires TWITTER_API_KEY)
     - "MOCK" or default: Returns MockAdapter for development/testing
 
     Returns:
         BaseProvider: Provider instance
 
     Raises:
-        ValueError: If APIFY is requested but APIFY_API_TOKEN is not set
+        ValueError: If provider is requested but required credentials are not set
     """
     provider_type = settings.X_PROVIDER.upper()
 
     logger.info(f"Initializing provider: {provider_type}")
 
-    if provider_type == "APIFY":
+    if provider_type == "TWITTER_API":
         try:
-            return ApifyAdapter()
+            return TwitterAPIAdapter()
         except ValueError as e:
-            logger.error(f"Failed to initialize ApifyAdapter: {e}")
+            logger.error(f"Failed to initialize TwitterAPIAdapter: {e}")
             raise
 
     # Default to Mock adapter

@@ -85,6 +85,7 @@ class TopicResponse(BaseModel):
     cron_expression: str
     is_enabled: bool
     last_collection_timestamp: Optional[datetime]
+    last_tweet_id: Optional[str] = None
     created_at: datetime
 
     class Config:

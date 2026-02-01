@@ -36,6 +36,7 @@ class Topic(Base):
     cron_expression = Column(String(100), nullable=False)
     is_enabled = Column(Boolean, default=True, nullable=False)
     last_collection_timestamp = Column(DateTime(timezone=True), nullable=True)
+    last_tweet_id = Column(String(255), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

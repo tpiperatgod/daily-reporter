@@ -57,16 +57,23 @@ class LLMClient:
 
     def __init__(self):
         """Initialize the LLM client."""
-        self.base_url = settings.LLM_BASE_URL.rstrip('/')
-        self.model = settings.LLM_MODEL
+        # Chat API configuration
+        self.chat_base_url = settings.LLM_CHAT_BASE_URL.rstrip('/')
+        self.chat_model = settings.LLM_CHAT_MODEL
+        self.chat_api_key = settings.LLM_CHAT_API_KEY
+
+        # Embedding API configuration
+        self.embedding_base_url = settings.LLM_EMBEDDING_BASE_URL.rstrip('/')
         self.embedding_model = settings.LLM_EMBEDDING_MODEL
-        self.api_key = settings.LLM_API_KEY
+        self.embedding_api_key = settings.LLM_EMBEDDING_API_KEY
+
+        # Shared configuration
         self.max_tokens = settings.LLM_MAX_TOKENS
 
+        # HTTP client - no default Authorization header
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(60.0),
             headers={
-                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
         )
@@ -74,8 +81,9 @@ class LLMClient:
         logger.info(
             f"Initialized LLM client",
             extra={
-                "base_url": self.base_url,
-                "model": self.model,
+                "chat_base_url": self.chat_base_url,
+                "chat_model": self.chat_model,
+                "embedding_base_url": self.embedding_base_url,
                 "embedding_model": self.embedding_model
             }
         )
@@ -95,10 +103,13 @@ class LLMClient:
         """
         try:
             response = await self.client.post(
-                f"{self.base_url}/embeddings",
+                f"{self.embedding_base_url}/embeddings",
                 json={
                     "model": self.embedding_model,
                     "input": text[:1000]  # Truncate very long text
+                },
+                headers={
+                    "Authorization": f"Bearer {self.embedding_api_key}"
                 }
             )
 
@@ -282,9 +293,9 @@ class LLMClient:
         """
         try:
             response = await self.client.post(
-                f"{self.base_url}/chat/completions",
+                f"{self.chat_base_url}/chat/completions",
                 json={
-                    "model": self.model,
+                    "model": self.chat_model,
                     "messages": [
                         {
                             "role": "system",
@@ -297,6 +308,9 @@ class LLMClient:
                     ],
                     "temperature": 0.3,
                     "response_format": {"type": "json_object"}
+                },
+                headers={
+                    "Authorization": f"Bearer {self.chat_api_key}"
                 }
             )
 
