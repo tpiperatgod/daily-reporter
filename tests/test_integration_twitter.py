@@ -75,14 +75,14 @@ class TestIncrementalCollection:
                     "author": {"userName": "karpathy"},
                     "text": "First tweet",
                     "url": "https://x.com/karpathy/status/100",
-                    "createdAt": "2025-01-31T10:00:00Z"
+                    "createdAt": "Fri Jan 31 10:00:00 +0000 2025"
                 },
                 {
                     "id": "200",
                     "author": {"userName": "karpathy"},
                     "text": "Second tweet",
                     "url": "https://x.com/karpathy/status/200",
-                    "createdAt": "2025-01-31T11:00:00Z"
+                    "createdAt": "Fri Jan 31 11:00:00 +0000 2025"
                 }
             ],
             "has_next_page": False,
@@ -146,7 +146,7 @@ class TestIncrementalCollection:
                     "author": {"userName": "karpathy"},
                     "text": "New tweet after 200",
                     "url": "https://x.com/karpathy/status/300",
-                    "createdAt": "2025-01-31T12:00:00Z"
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
                 }
             ],
             "has_next_page": False,
@@ -243,7 +243,7 @@ class TestDatabaseUpdates:
                     "author": {"userName": "karpathy"},
                     "text": "Test",
                     "url": "https://x.com/karpathy/status/123",
-                    "createdAt": "2025-01-31T12:00:00Z"
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
                 }
             ],
             "has_next_page": False,

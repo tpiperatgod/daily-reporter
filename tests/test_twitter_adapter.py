@@ -80,22 +80,31 @@ class TestQueryBuilder:
 
 
 class TestTimestampParser:
-    """Test ISO 8601 timestamp parsing."""
+    """Test RFC 2822 timestamp parsing."""
 
-    def test_parse_timestamp_iso8601_z(self, adapter):
-        """Test parsing ISO 8601 with Z suffix."""
-        timestamp = "2025-01-31T12:34:56Z"
+    def test_parse_timestamp_rfc2822(self, adapter):
+        """Test parsing RFC 2822 timestamp (Twitter API format)."""
+        # Real Twitter API format
+        timestamp = "Tue Nov 18 00:56:32 +0000 2025"
         result = adapter._parse_timestamp(timestamp)
+
         assert isinstance(result, datetime)
+        assert result.year == 2025
+        assert result.month == 11
+        assert result.day == 18
+        assert result.hour == 0
+        assert result.minute == 56
+        assert result.second == 32
+        assert result.tzinfo is not None  # Ensure timezone-aware
+
+    def test_parse_timestamp_with_different_timezone(self, adapter):
+        """Test parsing RFC 2822 with different timezone."""
+        timestamp = "Mon Jan 31 12:34:56 -0500 2025"
+        result = adapter._parse_timestamp(timestamp)
+
         assert result.year == 2025
         assert result.month == 1
         assert result.day == 31
-
-    def test_parse_timestamp_iso8601_offset(self, adapter):
-        """Test parsing ISO 8601 with timezone offset."""
-        timestamp = "2025-01-31T12:34:56+00:00"
-        result = adapter._parse_timestamp(timestamp)
-        assert isinstance(result, datetime)
 
     def test_parse_timestamp_invalid(self, adapter):
         """Test error on invalid timestamp."""
@@ -187,7 +196,7 @@ class TestTweetMapping:
             "author": {"userName": "karpathy"},
             "text": "This is a test tweet",
             "url": "https://x.com/karpathy/status/2017297261160812716",
-            "createdAt": "2025-01-31T12:00:00Z",
+            "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
             "entities": {
                 "media": [
                     {"url": "https://pbs.twimg.com/media/image.jpg"}
@@ -218,7 +227,7 @@ class TestTweetMapping:
             "author": {"userName": "testuser"},
             "text": "Minimal tweet",
             "url": "https://x.com/testuser/status/123456789",
-            "createdAt": "2025-01-31T12:00:00Z"
+            "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
         }
 
         result = adapter._map_tweet_to_raw_item(tweet)
@@ -234,7 +243,7 @@ class TestTweetMapping:
             # Missing author
             "text": "Test",
             "url": "https://x.com/test/status/123",
-            "createdAt": "2025-01-31T12:00:00Z"
+            "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
         }
 
         with pytest.raises(KeyError):
@@ -254,7 +263,7 @@ class TestAPIFetch:
                     "author": {"userName": "test"},
                     "text": "Test tweet",
                     "url": "https://x.com/test/status/123",
-                    "createdAt": "2025-01-31T12:00:00Z"
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
                 }
             ],
             "has_next_page": False,
@@ -321,7 +330,7 @@ class TestPagination:
                     "author": {"userName": "test"},
                     "text": "Test",
                     "url": "https://x.com/test/status/123",
-                    "createdAt": "2025-01-31T12:00:00Z"
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
                 }
             ],
             "has_next_page": False,
@@ -338,12 +347,12 @@ class TestPagination:
     async def test_fetch_all_pages_multiple_pages(self, adapter):
         """Test fetching multiple pages."""
         page1 = {
-            "tweets": [{"id": "1", "author": {"userName": "t"}, "text": "T1", "url": "url1", "createdAt": "2025-01-31T12:00:00Z"}],
+            "tweets": [{"id": "1", "author": {"userName": "t"}, "text": "T1", "url": "url1", "createdAt": "Fri Jan 31 12:00:00 +0000 2025"}],
             "has_next_page": True,
             "next_cursor": "cursor1"
         }
         page2 = {
-            "tweets": [{"id": "2", "author": {"userName": "t"}, "text": "T2", "url": "url2", "createdAt": "2025-01-31T12:00:00Z"}],
+            "tweets": [{"id": "2", "author": {"userName": "t"}, "text": "T2", "url": "url2", "createdAt": "Fri Jan 31 12:00:00 +0000 2025"}],
             "has_next_page": False,
             "next_cursor": None
         }
@@ -361,7 +370,7 @@ class TestPagination:
         """Test that pagination stops at max_items."""
         mock_response = {
             "tweets": [
-                {"id": str(i), "author": {"userName": "t"}, "text": f"T{i}", "url": f"url{i}", "createdAt": "2025-01-31T12:00:00Z"}
+                {"id": str(i), "author": {"userName": "t"}, "text": f"T{i}", "url": f"url{i}", "createdAt": "Fri Jan 31 12:00:00 +0000 2025"}
                 for i in range(20)
             ],
             "has_next_page": True,
@@ -387,7 +396,7 @@ class TestEndToEndFetch:
                     "author": {"userName": "karpathy"},
                     "text": "Test tweet",
                     "url": "https://x.com/karpathy/status/2017297261160812716",
-                    "createdAt": "2025-01-31T12:00:00Z",
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
                     "likeCount": 100
                 }
             ],

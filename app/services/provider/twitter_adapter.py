@@ -8,7 +8,8 @@ import re
 import httpx
 import logging
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 from app.services.provider.base import BaseProvider, RawItem
 from app.core.config import settings
@@ -300,19 +301,28 @@ class TwitterAPIAdapter(BaseProvider):
 
     def _parse_timestamp(self, timestamp_str: str) -> datetime:
         """
-        Parse ISO 8601 timestamp from Twitter API.
+        Parse RFC 2822 timestamp from Twitter API.
+
+        Twitter API returns timestamps in RFC 2822 format:
+        "Tue Nov 18 00:56:32 +0000 2025"
 
         Args:
-            timestamp_str: ISO 8601 formatted timestamp
+            timestamp_str: RFC 2822 formatted timestamp
 
         Returns:
-            Datetime object
+            Timezone-aware datetime object (UTC)
 
         Raises:
             ValueError: If timestamp cannot be parsed
         """
         try:
-            # Twitter API returns ISO 8601 format
-            return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            # Parse RFC 2822 format (Twitter API v1.1 standard)
+            dt = parsedate_to_datetime(timestamp_str)
+
+            # Ensure UTC timezone
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+
+            return dt
         except Exception as e:
             raise ValueError(f"Failed to parse timestamp '{timestamp_str}': {e}")
