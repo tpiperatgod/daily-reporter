@@ -17,6 +17,7 @@ from app.api.schemas import (
     PaginatedResponse
 )
 from app.core.logging import get_logger
+from app.db.utils import get_entity_or_404, paginate_query
 
 logger = get_logger(__name__)
 
@@ -45,27 +46,9 @@ async def create_subscription(
         f"Creating subscription: user={sub_data.user_id}, topic={sub_data.topic_id}"
     )
 
-    # Verify user exists
-    user_result = await db.execute(
-        select(User).where(User.id == sub_data.user_id)
-    )
-    user = user_result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
-    # Verify topic exists
-    topic_result = await db.execute(
-        select(Topic).where(Topic.id == sub_data.topic_id)
-    )
-    topic = topic_result.scalar_one_or_none()
-    if not topic:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Topic not found"
-        )
+    # Verify user and topic exist
+    await get_entity_or_404(db, User, sub_data.user_id)
+    await get_entity_or_404(db, Topic, sub_data.topic_id)
 
     # Check if subscription already exists
     existing_result = await db.execute(
@@ -127,20 +110,13 @@ async def list_subscriptions(
     if topic_id:
         query = query.where(Subscription.topic_id == topic_id)
 
-    # Get total count
-    count_result = await db.execute(
-        select(func.count(Subscription.id)).select_from(query.subquery())
-    )
-    total = count_result.scalar()
-
     # Apply pagination with eager loading
     query = query.options(
         selectinload(Subscription.user),
         selectinload(Subscription.topic)
-    ).order_by(Subscription.created_at.desc()).limit(limit).offset(offset)
-
-    result = await db.execute(query)
-    subscriptions = result.scalars().all()
+    ).order_by(Subscription.created_at.desc())
+    
+    subscriptions, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
         items=[SubscriptionResponse.from_orm(s) for s in subscriptions],
@@ -168,22 +144,10 @@ async def get_subscription(
     Raises:
         HTTPException: If subscription not found
     """
-    result = await db.execute(
-        select(Subscription)
-        .options(
-            selectinload(Subscription.user),
-            selectinload(Subscription.topic)
-        )
-        .where(Subscription.id == subscription_id)
+    subscription = await get_entity_or_404(
+        db, Subscription, subscription_id,
+        eager_load=[selectinload(Subscription.user), selectinload(Subscription.topic)]
     )
-    subscription = result.scalar_one_or_none()
-
-    if not subscription:
-        logger.warning(f"Subscription not found: {subscription_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Subscription not found"
-        )
 
     return subscription
 
@@ -208,17 +172,7 @@ async def update_subscription(
     Raises:
         HTTPException: If subscription not found
     """
-    result = await db.execute(
-        select(Subscription).where(Subscription.id == subscription_id)
-    )
-    subscription = result.scalar_one_or_none()
-
-    if not subscription:
-        logger.warning(f"Subscription not found: {subscription_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Subscription not found"
-        )
+    subscription = await get_entity_or_404(db, Subscription, subscription_id)
 
     # Update fields
     if sub_data.enable_feishu is not None:
@@ -248,17 +202,7 @@ async def delete_subscription(
     Raises:
         HTTPException: If subscription not found
     """
-    result = await db.execute(
-        select(Subscription).where(Subscription.id == subscription_id)
-    )
-    subscription = result.scalar_one_or_none()
-
-    if not subscription:
-        logger.warning(f"Subscription not found: {subscription_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Subscription not found"
-        )
+    subscription = await get_entity_or_404(db, Subscription, subscription_id)
 
     await db.delete(subscription)
     await db.commit()

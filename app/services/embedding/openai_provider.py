@@ -186,46 +186,31 @@ class OpenAIEmbeddingProvider:
         Raises:
             Exception: If all retries exhausted or non-retryable error
         """
-        backoff = self.initial_backoff
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                response = await self.client.post(
-                    f"{self.base_url}/embeddings",
-                    json=json_data,
-                    headers={"Authorization": f"Bearer {self.api_key}"}
-                )
-                response.raise_for_status()
-                return response.json()
-
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429:  # Rate limit
-                    if attempt < self.max_retries:
-                        logger.warning(
-                            f"Rate limited (429), retrying in {backoff}s "
-                            f"(attempt {attempt + 1}/{self.max_retries + 1})"
-                        )
-                        await asyncio.sleep(backoff)
-                        backoff *= 2  # Exponential: 1s, 2s, 4s, 8s, 16s
-                        continue
-                    else:
-                        logger.error(f"Rate limit (429) - all retries exhausted")
-                        raise
-                elif e.response.status_code == 401:
-                    logger.error("Authentication failed - check API key")
-                    raise
-                elif e.response.status_code == 400:
-                    logger.error(f"Bad request (400): {e.response.text}")
-                    # Return None for graceful degradation
-                    return {"data": [{"embedding": None}]}
-                else:
-                    logger.error(f"HTTP error {e.response.status_code}: {e}")
-                    raise
-            except Exception as e:
-                logger.error(f"API call failed: {e}")
+        from app.core.http_utils import api_call_with_retry
+        
+        def handle_openai_errors(error: httpx.HTTPStatusError, attempt: int):
+            """Custom error handling for OpenAI API."""
+            if error.response.status_code == 401:
+                logger.error("Authentication failed - check API key")
                 raise
-
-        raise Exception(f"Failed after {self.max_retries + 1} attempts")
+            elif error.response.status_code == 400:
+                logger.error(f"Bad request (400): {error.response.text}")
+                # Return None for graceful degradation
+                return {"data": [{"embedding": None}]}
+            # Return None to continue retry for other errors
+            return None
+        
+        return await api_call_with_retry(
+            client=self.client,
+            method="POST",
+            url=f"{self.base_url}/embeddings",
+            json_data=json_data,
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            max_retries=self.max_retries,
+            initial_backoff=self.initial_backoff,
+            retryable_status_codes={429},  # Rate limit
+            error_handler=handle_openai_errors
+        )
 
     async def close(self):
         """Close the HTTP client."""

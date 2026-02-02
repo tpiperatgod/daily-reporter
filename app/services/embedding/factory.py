@@ -43,43 +43,28 @@ def _create_openai_provider() -> OpenAIEmbeddingProvider:
     """
     Create OpenAI-compatible embedding provider.
 
-    Supports backward compatibility with old config variable names.
-
     Returns:
         OpenAIEmbeddingProvider instance
 
     Raises:
         ValueError: If required configuration is missing
     """
-    # Try new config variables first, fall back to old ones for backward compatibility
-    base_url = (
-        settings.OPENAI_EMBEDDING_BASE_URL
-        or settings.LLM_EMBEDDING_BASE_URL
-    )
-    model = (
-        settings.OPENAI_EMBEDDING_MODEL
-        or settings.LLM_EMBEDDING_MODEL
-    )
-    api_key = (
-        settings.OPENAI_EMBEDDING_API_KEY
-        or settings.LLM_EMBEDDING_API_KEY
-    )
+    base_url = settings.OPENAI_EMBEDDING_BASE_URL
+    model = settings.OPENAI_EMBEDDING_MODEL
+    api_key = settings.OPENAI_EMBEDDING_API_KEY
 
     # Validate required fields
     if not base_url:
         raise ValueError(
-            "OPENAI_EMBEDDING_BASE_URL or LLM_EMBEDDING_BASE_URL must be set "
-            "when using OpenAI provider"
+            "OPENAI_EMBEDDING_BASE_URL must be set when using OpenAI provider"
         )
     if not model:
         raise ValueError(
-            "OPENAI_EMBEDDING_MODEL or LLM_EMBEDDING_MODEL must be set "
-            "when using OpenAI provider"
+            "OPENAI_EMBEDDING_MODEL must be set when using OpenAI provider"
         )
     if not api_key:
         raise ValueError(
-            "OPENAI_EMBEDDING_API_KEY or LLM_EMBEDDING_API_KEY must be set "
-            "when using OpenAI provider"
+            "OPENAI_EMBEDDING_API_KEY must be set when using OpenAI provider"
         )
 
     logger.info(

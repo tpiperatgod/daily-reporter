@@ -202,51 +202,36 @@ class OllamaEmbeddingProvider:
         Raises:
             Exception: If all retries exhausted or non-retryable error
         """
-        backoff = self.initial_backoff
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                response = await self.client.post(
-                    f"{self.base_url}/api/embed",
-                    json=json_data
-                    # No Authorization header for local Ollama
-                )
-                response.raise_for_status()
-                return response.json()
-
-            except httpx.ConnectError as e:
+        from app.core.http_utils import api_call_with_retry
+        
+        def handle_ollama_errors(error: httpx.HTTPStatusError, attempt: int):
+            """Custom error handling for Ollama API."""
+            if error.response.status_code == 404:
                 logger.error(
-                    f"Cannot connect to Ollama at {self.base_url}. "
-                    f"Is Ollama running? Try: ollama serve"
+                    f"Model '{self.model}' not found. "
+                    f"Pull the model: ollama pull {self.model}"
                 )
                 raise
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 404:
-                    logger.error(
-                        f"Model '{self.model}' not found. "
-                        f"Pull the model: ollama pull {self.model}"
-                    )
-                    raise
-                else:
-                    logger.error(f"HTTP error {e.response.status_code}: {e}")
-                    raise
-            except httpx.TimeoutException:
-                if attempt < self.max_retries:
-                    logger.warning(
-                        f"Request timeout, retrying in {backoff}s "
-                        f"(attempt {attempt + 1}/{self.max_retries + 1})"
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff *= 2
-                    continue
-                else:
-                    logger.error(f"Request timeout - all retries exhausted")
-                    raise
-            except Exception as e:
-                logger.error(f"API call failed: {e}")
-                raise
-
-        raise Exception(f"Failed after {self.max_retries + 1} attempts")
+            # Return None to continue retry for other errors
+            return None
+        
+        try:
+            return await api_call_with_retry(
+                client=self.client,
+                method="POST",
+                url=f"{self.base_url}/api/embed",
+                json_data=json_data,
+                max_retries=self.max_retries,
+                initial_backoff=self.initial_backoff,
+                retryable_status_codes=set(),  # No rate limits for local Ollama
+                error_handler=handle_ollama_errors
+            )
+        except httpx.ConnectError as e:
+            logger.error(
+                f"Cannot connect to Ollama at {self.base_url}. "
+                f"Is Ollama running? Try: ollama serve"
+            )
+            raise
 
     async def close(self):
         """Close the HTTP client."""

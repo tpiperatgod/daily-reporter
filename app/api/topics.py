@@ -17,6 +17,7 @@ from app.api.schemas import (
     TriggerResponse
 )
 from app.core.logging import get_logger
+from app.db.utils import get_entity_or_404, paginate_query
 from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -92,14 +93,9 @@ async def list_topics(
             (Topic.query.ilike(f"%{search}%"))
         )
 
-    # Get total count
-    count_result = await db.execute(select(func.count(Topic.id)).select_from(query.subquery()))
-    total = count_result.scalar()
-
     # Apply pagination
-    query = query.order_by(Topic.created_at.desc()).limit(limit).offset(offset)
-    result = await db.execute(query)
-    topics = result.scalars().all()
+    query = query.order_by(Topic.created_at.desc())
+    topics, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
         items=[TopicResponse.from_orm(t) for t in topics],
@@ -127,17 +123,7 @@ async def get_topic(
     Raises:
         HTTPException: If topic not found
     """
-    result = await db.execute(
-        select(Topic).where(Topic.id == topic_id)
-    )
-    topic = result.scalar_one_or_none()
-
-    if not topic:
-        logger.warning(f"Topic not found: {topic_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Topic not found"
-        )
+    topic = await get_entity_or_404(db, Topic, topic_id)
 
     # Get statistics
     # Count items
@@ -187,17 +173,7 @@ async def update_topic(
     Raises:
         HTTPException: If topic not found
     """
-    result = await db.execute(
-        select(Topic).where(Topic.id == topic_id)
-    )
-    topic = result.scalar_one_or_none()
-
-    if not topic:
-        logger.warning(f"Topic not found: {topic_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Topic not found"
-        )
+    topic = await get_entity_or_404(db, Topic, topic_id)
 
     # Update fields
     if topic_data.name is not None:
@@ -231,17 +207,7 @@ async def delete_topic(
     Raises:
         HTTPException: If topic not found
     """
-    result = await db.execute(
-        select(Topic).where(Topic.id == topic_id)
-    )
-    topic = result.scalar_one_or_none()
-
-    if not topic:
-        logger.warning(f"Topic not found: {topic_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Topic not found"
-        )
+    topic = await get_entity_or_404(db, Topic, topic_id)
 
     await db.delete(topic)
     await db.commit()
@@ -267,17 +233,7 @@ async def trigger_topic_collection(
     Raises:
         HTTPException: If topic not found or not enabled
     """
-    result = await db.execute(
-        select(Topic).where(Topic.id == topic_id)
-    )
-    topic = result.scalar_one_or_none()
-
-    if not topic:
-        logger.warning(f"Topic not found: {topic_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Topic not found"
-        )
+    topic = await get_entity_or_404(db, Topic, topic_id)
 
     if not topic.is_enabled:
         raise HTTPException(

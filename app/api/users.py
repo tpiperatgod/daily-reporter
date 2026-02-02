@@ -16,6 +16,7 @@ from app.api.schemas import (
     PaginatedResponse
 )
 from app.core.logging import get_logger
+from app.db.utils import get_entity_or_404, paginate_query
 
 logger = get_logger(__name__)
 
@@ -98,14 +99,9 @@ async def list_users(
             )
         )
 
-    # Get total count
-    count_result = await db.execute(select(User.id).select_from(query.subquery()))
-    total = len(count_result.all())
-
     # Apply pagination
-    query = query.order_by(User.created_at.desc()).limit(limit).offset(offset)
-    result = await db.execute(query)
-    users = result.scalars().all()
+    query = query.order_by(User.created_at.desc())
+    users, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
         items=[UserResponse.from_orm(u) for u in users],
@@ -133,17 +129,7 @@ async def get_user(
     Raises:
         HTTPException: If user not found
     """
-    result = await db.execute(
-        select(User).where(User.id == user_id)
-    )
-    user = result.scalar_one_or_none()
-
-    if not user:
-        logger.warning(f"User not found: {user_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+    user = await get_entity_or_404(db, User, user_id)
 
     # Load subscriptions
     subs_result = await db.execute(
@@ -174,17 +160,7 @@ async def update_user(
     Raises:
         HTTPException: If user not found or email conflict
     """
-    result = await db.execute(
-        select(User).where(User.id == user_id)
-    )
-    user = result.scalar_one_or_none()
-
-    if not user:
-        logger.warning(f"User not found: {user_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+    user = await get_entity_or_404(db, User, user_id)
 
     # Check email uniqueness if changing
     if user_data.email != user.email:

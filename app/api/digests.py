@@ -20,6 +20,7 @@ from app.api.schemas import (
 )
 from app.core.logging import get_logger
 from app.core.constants import NotificationChannel, DeliveryStatus
+from app.db.utils import get_entity_or_404, paginate_query
 
 logger = get_logger(__name__)
 
@@ -51,19 +52,12 @@ async def list_digests(
     if topic_id:
         query = query.where(Digest.topic_id == topic_id)
 
-    # Get total count
-    count_result = await db.execute(
-        select(func.count(Digest.id)).select_from(query.subquery())
-    )
-    total = count_result.scalar()
-
     # Apply pagination with eager loading
     query = query.options(
         selectinload(Digest.topic)
-    ).order_by(Digest.created_at.desc()).limit(limit).offset(offset)
-
-    result = await db.execute(query)
-    digests = result.scalars().all()
+    ).order_by(Digest.created_at.desc())
+    
+    digests, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
         items=[DigestResponse.from_orm(d) for d in digests],
@@ -91,22 +85,10 @@ async def get_digest(
     Raises:
         HTTPException: If digest not found
     """
-    result = await db.execute(
-        select(Digest)
-        .options(
-            selectinload(Digest.topic),
-            selectinload(Digest.deliveries)
-        )
-        .where(Digest.id == digest_id)
+    digest = await get_entity_or_404(
+        db, Digest, digest_id,
+        eager_load=[selectinload(Digest.topic), selectinload(Digest.deliveries)]
     )
-    digest = result.scalar_one_or_none()
-
-    if not digest:
-        logger.warning(f"Digest not found: {digest_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Digest not found"
-        )
 
     return digest
 
@@ -136,15 +118,7 @@ async def get_digest_deliveries(
         HTTPException: If digest not found
     """
     # Verify digest exists
-    digest_result = await db.execute(
-        select(Digest).where(Digest.id == digest_id)
-    )
-    digest = digest_result.scalar_one_or_none()
-    if not digest:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Digest not found"
-        )
+    await get_entity_or_404(db, Digest, digest_id)
 
     # Query deliveries
     query = select(Delivery).where(Delivery.digest_id == digest_id)
@@ -153,16 +127,9 @@ async def get_digest_deliveries(
     if status:
         query = query.where(Delivery.status == status)
 
-    # Get total count
-    count_result = await db.execute(
-        select(func.count(Delivery.id)).select_from(query.subquery())
-    )
-    total = count_result.scalar()
-
     # Apply pagination
-    query = query.order_by(Delivery.created_at.desc()).limit(limit).offset(offset)
-    result = await db.execute(query)
-    deliveries = result.scalars().all()
+    query = query.order_by(Delivery.created_at.desc())
+    deliveries, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
         items=deliveries,
@@ -190,17 +157,7 @@ async def get_digest_content(
     Raises:
         HTTPException: If digest not found
     """
-    result = await db.execute(
-        select(Digest).where(Digest.id == digest_id)
-    )
-    digest = result.scalar_one_or_none()
-
-    if not digest:
-        logger.warning(f"Digest not found: {digest_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Digest not found"
-        )
+    digest = await get_entity_or_404(db, Digest, digest_id)
 
     return {
         "digest_id": str(digest.id),
