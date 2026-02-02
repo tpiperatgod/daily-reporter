@@ -135,38 +135,40 @@ async def _collect_data_async(self, topic_id: str):
                 # Fall back to None for all hashes
                 embedding_hashes = [None] * len(texts)
 
-            # Process each item with its embedding hash
+            # Batch check for existing items (fixes N+1 query problem)
+            from app.db.utils import batch_check_exists
+            
+            # Collect all source_ids and embedding_hashes
+            source_ids = [raw_item.source_id for raw_item in raw_items]
+            embedding_hashes_non_null = [h for h in embedding_hashes if h is not None]
+            
+            # Batch check existing source_ids (1 query total)
+            existing_source_ids = await batch_check_exists(
+                session, Item, Item.source_id, source_ids,
+                additional_filters=[Item.topic_id == topic_id]
+            )
+            
+            # Batch check existing embedding hashes (1 query total)
+            existing_hashes = await batch_check_exists(
+                session, Item, Item.embedding_hash, embedding_hashes_non_null,
+                additional_filters=[Item.topic_id == topic_id]
+            ) if embedding_hashes_non_null else set()
+            
+            # Process each item with in-memory duplicate checking
             for raw_item, embedding_hash in zip(raw_items, embedding_hashes):
-                # Check for duplicate by source_id
-                existing = await session.execute(
-                    select(Item).where(
-                        and_(
-                            Item.topic_id == topic_id,
-                            Item.source_id == raw_item.source_id
-                        )
-                    )
-                )
-                if existing.scalar_one_or_none():
+                # Check for duplicate by source_id (in-memory)
+                if raw_item.source_id in existing_source_ids:
                     duplicates += 1
                     continue
-
-                # Also check by embedding_hash if available
-                if embedding_hash:
-                    existing = await session.execute(
-                        select(Item).where(
-                            and_(
-                                Item.topic_id == topic_id,
-                                Item.embedding_hash == embedding_hash
-                            )
-                        )
+                
+                # Also check by embedding_hash if available (in-memory)
+                if embedding_hash and embedding_hash in existing_hashes:
+                    duplicates += 1
+                    logger.debug(
+                        f"Duplicate found via embedding hash: {raw_item.source_id}"
                     )
-                    if existing.scalar_one_or_none():
-                        duplicates += 1
-                        logger.debug(
-                            f"Duplicate found via embedding hash: {raw_item.source_id}"
-                        )
-                        continue
-
+                    continue
+                
                 # Create new item
                 item = Item(
                     topic_id=topic_id,
@@ -411,8 +413,6 @@ def notify(self, digest_id: str):
 async def _notify_async(self, digest_id: str):
     """Async implementation of notify task."""
     from app.db.session import get_async_session_local
-    from app.services.notifier.feishu import FeishuNotifier
-    from app.services.notifier.email import EmailNotifier
 
     try:
         async with get_async_session_local()() as session:
@@ -447,88 +447,42 @@ async def _notify_async(self, digest_id: str):
 
             logger.info(f"Found {len(subscriptions)} subscriptions")
 
-            # 3. Send notifications
-            feishu_notifier = FeishuNotifier(log_only=False)
-            email_notifier = EmailNotifier()
-
-            deliveries_created = 0
+            # 3. Send notifications using shared delivery service
+            from app.services.notifier.delivery import send_digest_to_user
+            from app.core.constants import NotificationChannel, DeliveryStatus
+            
             successful = 0
             failed = 0
-
+            deliveries_created = 0
+            
             for subscription, user in subscriptions:
-                # Create delivery records for each enabled channel
+                # Determine channels from subscription settings
                 channels = []
                 if subscription.enable_feishu:
-                    channels.append("feishu")
+                    channels.append(NotificationChannel.FEISHU)
                 if subscription.enable_email:
-                    channels.append("email")
-
-                for channel in channels:
-                    # Create delivery record
-                    delivery = Delivery(
-                        digest_id=digest_id,
-                        user_id=str(user.id),
-                        channel=channel,
-                        status="pending"
-                    )
-                    session.add(delivery)
-                    await session.flush()
-
-                    # Send notification
-                    try:
-                        if channel == "feishu":
-                            if not user.feishu_webhook_url:
-                                logger.warning(
-                                    f"User {user.email} has Feishu enabled but no webhook URL"
-                                )
-                                delivery.status = "failed"
-                                delivery.error_msg = "No webhook URL configured"
-                                continue
-
-                            # Send Feishu notification
-                            # Parse DigestResult from summary_json
-                            digest_result = DigestResult(**digest.summary_json)
-
-                            await feishu_notifier.send(
-                                webhook_url=user.feishu_webhook_url,
-                                digest_result=digest_result,
-                                topic_name=topic.name,
-                                webhook_secret=user.feishu_webhook_secret if hasattr(user, 'feishu_webhook_secret') else None
-                            )
-
-                        elif channel == "email":
-                            # Send email notification
-                            await email_notifier.send(
-                                to_email=user.email,
-                                subject=f"Digest: {topic.name}",
-                                content=digest.rendered_content
-                            )
-
-                        # Update delivery status
-                        delivery.status = "success"
-                        delivery.sent_at = datetime.now(UTC)
+                    channels.append(NotificationChannel.EMAIL)
+                
+                if not channels:
+                    logger.debug(f"No channels enabled for user {user.email}")
+                    continue
+                
+                # Use shared service to send and track deliveries
+                deliveries = await send_digest_to_user(
+                    digest=digest, 
+                    user=user, 
+                    channels=channels, 
+                    session=session
+                )
+                
+                # Aggregate results
+                for delivery in deliveries:
+                    deliveries_created += 1
+                    if delivery.status == DeliveryStatus.SUCCESS:
                         successful += 1
-                        deliveries_created += 1
-
-                        logger.info(
-                            f"Sent {channel} notification to {user.email}",
-                            extra={
-                                "channel": channel,
-                                "user_id": str(user.id),
-                                "delivery_id": str(delivery.id)
-                            }
-                        )
-
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to send {channel} notification to {user.email}: {e}"
-                        )
-                        delivery.status = "failed"
-                        delivery.error_msg = str(e)
-                        delivery.retry_count += 1
+                    elif delivery.status == DeliveryStatus.FAILED:
                         failed += 1
-                        deliveries_created += 1
-
+            
             await session.commit()
 
             return {

@@ -19,6 +19,7 @@ from app.api.schemas import (
     SendDigestDelivery
 )
 from app.core.logging import get_logger
+from app.core.constants import NotificationChannel, DeliveryStatus
 
 logger = get_logger(__name__)
 
@@ -284,9 +285,9 @@ async def send_digest(
     # 4. Determine channels from subscription settings
     channels = []
     if subscription.enable_feishu:
-        channels.append("feishu")
+        channels.append(NotificationChannel.FEISHU)
     if subscription.enable_email:
-        channels.append("email")
+        channels.append(NotificationChannel.EMAIL)
 
     if not channels:
         raise HTTPException(
@@ -296,7 +297,7 @@ async def send_digest(
 
     # 5. Validate user configurations
     user = subscription.user
-    if "feishu" in channels and not user.feishu_webhook_url:
+    if NotificationChannel.FEISHU in channels and not user.feishu_webhook_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User has Feishu enabled but no webhook URL configured"
@@ -323,8 +324,8 @@ async def send_digest(
     await db.commit()
 
     # 7. Build response
-    successful = sum(1 for d in deliveries if d.status == "success")
-    failed = sum(1 for d in deliveries if d.status == "failed")
+    successful = sum(1 for d in deliveries if d.status == DeliveryStatus.SUCCESS)
+    failed = sum(1 for d in deliveries if d.status == DeliveryStatus.FAILED)
 
     logger.info(
         f"Digest sent: {successful} successful, {failed} failed",

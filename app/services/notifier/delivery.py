@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.core.config import settings
+from app.core.constants import DeliveryStatus, NotificationChannel
 from app.db.models import Digest, User, Delivery
 from app.services.notifier.feishu import FeishuNotifier
 from app.services.notifier.email import EmailNotifier
@@ -56,14 +57,14 @@ async def send_digest_to_user(
             digest_id=str(digest.id),
             user_id=str(user.id),
             channel=channel,
-            status="pending"
+            status=DeliveryStatus.PENDING
         )
         session.add(delivery)
         await session.flush()  # Get delivery ID
 
         # Send notification
         try:
-            if channel == "feishu":
+            if channel == NotificationChannel.FEISHU:
                 if not user.feishu_webhook_url:
                     raise ValueError("No Feishu webhook URL configured")
 
@@ -77,7 +78,7 @@ async def send_digest_to_user(
                     webhook_secret=user.feishu_webhook_secret if hasattr(user, 'feishu_webhook_secret') else None
                 )
 
-            elif channel == "email":
+            elif channel == NotificationChannel.EMAIL:
                 await email_notifier.send(
                     to_email=user.email,
                     subject=f"Digest: {digest.topic.name}",
@@ -85,7 +86,7 @@ async def send_digest_to_user(
                 )
 
             # Update delivery status
-            delivery.status = "success"
+            delivery.status = DeliveryStatus.SUCCESS
             delivery.sent_at = datetime.now(UTC)
 
             logger.info(
@@ -107,7 +108,7 @@ async def send_digest_to_user(
                     "digest_id": str(digest.id)
                 }
             )
-            delivery.status = "failed"
+            delivery.status = DeliveryStatus.FAILED
             delivery.error_msg = str(e)
             delivery.retry_count += 1
 
