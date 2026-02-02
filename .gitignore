@@ -61,3 +61,7 @@ docker-compose.override.yml
 # Claude Code
 .claude/
 .mcp.json
+/.serena/
+
+# Git worktrees
+.worktrees/
