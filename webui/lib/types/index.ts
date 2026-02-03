@@ -31,12 +31,19 @@ export interface Subscription {
   topic?: Topic;  // Optional related data
 }
 
+export interface DigestSummary {
+  headline: string;
+  highlights: string[];
+  themes: string[];
+  overall_sentiment?: string;
+}
+
 export interface Digest {
   id: string;
   topic_id: string;
   time_window_start: string;
   time_window_end: string;
-  summary_json: any;
+  summary_json: DigestSummary;
   rendered_content: string;
   created_at: string;
 }
