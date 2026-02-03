@@ -30,3 +30,9 @@ export async function updateUser(
     body: JSON.stringify(data),
   });
 }
+
+export async function deleteUser(id: string): Promise<void> {
+  return apiClient<void>(`/api/v1/users/${id}`, {
+    method: 'DELETE',
+  });
+}
