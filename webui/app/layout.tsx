@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Sidebar from "@/components/layout/Sidebar";
 import "../styles/theme.css";
 import "./globals.css";
 
@@ -14,7 +15,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-theme="motherduck">
-      <body>{children}</body>
+      <body>
+        <Sidebar />
+        <main style={{ marginLeft: '240px', minHeight: '100vh', padding: '24px' }}>
+          {children}
+        </main>
+      </body>
     </html>
   );
 }
