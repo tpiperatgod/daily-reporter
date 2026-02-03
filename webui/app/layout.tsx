@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Sidebar from "@/components/layout/Sidebar";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 import "../styles/theme.css";
 import "./globals.css";
 
@@ -17,6 +18,7 @@ export default function RootLayout({
     <html lang="en" data-theme="motherduck">
       <body>
         <Sidebar />
+        <CommandPalette />
         <main style={{ marginLeft: '240px', minHeight: '100vh', padding: '24px' }}>
           {children}
         </main>
