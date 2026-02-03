@@ -1,28 +1,53 @@
+'use client';
+
+import { useState } from 'react';
+import { TopicTable } from '@/components/topics/TopicTable';
+import { TopicDrawer } from '@/components/topics/TopicDrawer';
+import type { Topic } from '@/lib/types';
+
 export default function TopicsPage() {
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleCreate = () => {
+    setSelectedTopic(null);
+    setIsDrawerOpen(true);
+  };
+
+  const handleEdit = (topic: Topic) => {
+    setSelectedTopic(topic);
+    setIsDrawerOpen(true);
+  };
+
+  const handleSave = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
+
   return (
     <div>
-      <h1 style={{
-        fontSize: 'var(--md-font-size-h2)',
-        fontWeight: 'var(--md-font-weight-bold)',
-        color: 'var(--md-color-text-primary)',
-        marginBottom: 'var(--md-spacing-xl)'
-      }}>
-        Topics
-      </h1>
-      <div style={{
-        padding: 'var(--md-spacing-xl)',
-        backgroundColor: 'var(--md-color-surface)',
-        border: 'var(--md-border-default) solid var(--md-color-border)',
-        borderRadius: 'var(--md-radius-md)',
-        boxShadow: 'var(--md-shadow-card)'
-      }}>
-        <p style={{
-          fontSize: 'var(--md-font-size-body)',
-          color: 'var(--md-color-text-secondary)'
-        }}>
-          Topics management coming soon...
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold">Topic Studio</h1>
+        <button
+          onClick={handleCreate}
+          className="px-6 py-3 rounded-lg font-medium"
+          style={{
+            backgroundColor: 'var(--color-primary)',
+            color: 'white',
+          }}
+        >
+          + Create Topic
+        </button>
       </div>
+
+      <TopicTable key={refreshKey} onEdit={handleEdit} />
+
+      <TopicDrawer
+        topic={selectedTopic}
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onSave={handleSave}
+      />
     </div>
   );
 }
