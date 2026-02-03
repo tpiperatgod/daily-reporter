@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Digest, Delivery } from '../types';
+import type { Digest, Delivery, Topic, User } from '../types';
 
 export async function getDigests(params?: {
   topic_id?: string;
@@ -35,4 +35,12 @@ export async function sendDigest(
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export async function getTopics(): Promise<Topic[]> {
+  return apiClient<Topic[]>('/api/v1/topics');
+}
+
+export async function getUsers(): Promise<User[]> {
+  return apiClient<User[]>('/api/v1/users');
 }

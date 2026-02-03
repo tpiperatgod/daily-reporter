@@ -46,6 +46,7 @@ export interface Digest {
   summary_json: DigestSummary;
   rendered_content: string;
   created_at: string;
+  topic?: Topic;  // Optional related data
 }
 
 export interface Delivery {
