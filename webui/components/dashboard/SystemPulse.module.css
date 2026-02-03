@@ -1,0 +1,87 @@
+.container {
+  background-color: var(--md-color-surface);
+  border: var(--md-border-default) solid var(--md-color-border);
+  border-radius: var(--md-radius-md);
+  padding: var(--md-spacing-xl);
+  box-shadow: var(--md-shadow-card);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--md-spacing-lg);
+}
+
+.title {
+  font-size: var(--md-font-size-h3);
+  font-weight: var(--md-font-weight-semibold);
+  color: var(--md-color-text-primary);
+  margin: 0;
+}
+
+.overallStatus {
+  padding: var(--md-spacing-xs) var(--md-spacing-md);
+  border-radius: var(--md-radius-sm);
+  color: white;
+  font-size: var(--md-font-size-small);
+  font-weight: var(--md-font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.components {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--md-spacing-md);
+}
+
+.component {
+  padding: var(--md-spacing-md);
+  background-color: var(--md-color-background);
+  border: var(--md-border-default) solid var(--md-color-border-subtle);
+  border-radius: var(--md-radius-sm);
+}
+
+.componentHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--md-spacing-sm);
+}
+
+.componentName {
+  font-weight: var(--md-font-weight-semibold);
+  color: var(--md-color-text-primary);
+  text-transform: capitalize;
+}
+
+.statusBadge {
+  padding: 2px var(--md-spacing-xs);
+  border-radius: var(--md-radius-xs);
+  color: white;
+  font-size: var(--md-font-size-tiny);
+  font-weight: var(--md-font-weight-semibold);
+}
+
+.componentMessage {
+  font-size: var(--md-font-size-small);
+  color: var(--md-color-text-secondary);
+  margin: var(--md-spacing-xs) 0;
+}
+
+.latency {
+  font-size: var(--md-font-size-tiny);
+  color: var(--md-color-text-tertiary);
+  margin-top: var(--md-spacing-xs);
+}
+
+.loading,
+.error {
+  padding: var(--md-spacing-lg);
+  text-align: center;
+  color: var(--md-color-text-secondary);
+}
+
+.error {
+  color: var(--md-color-danger);
+}
