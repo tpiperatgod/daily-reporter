@@ -78,21 +78,25 @@ export function TopicDrawer({ topic, isOpen, onClose, onSave }: TopicDrawerProps
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      style={{ backgroundColor: 'var(--color-overlay)' }}
       onClick={onClose}
     >
       <div
         className="rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-        style={{ backgroundColor: 'var(--color-surface)' }}
+        style={{
+          backgroundColor: 'var(--md-color-surface)',
+          border: 'var(--md-border-default) solid var(--md-color-border)',
+          boxShadow: 'var(--md-shadow-card-elevated)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-2xl font-bold mb-6">
+        <h2 className="text-2xl font-bold mb-6" style={{ color: 'var(--md-color-text-primary)' }}>
           {topic ? 'Edit Topic' : 'Create Topic'}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block mb-2 font-medium">Name</label>
+            <label className="block mb-2 font-medium" style={{ color: 'var(--md-color-text-secondary)' }}>Name</label>
             <input
               type="text"
               value={formData.name}
@@ -100,14 +104,15 @@ export function TopicDrawer({ topic, isOpen, onClose, onSave }: TopicDrawerProps
               required
               className="w-full p-3 rounded-lg"
               style={{
-                backgroundColor: 'var(--color-surface-elevated)',
-                border: '1px solid var(--color-border)',
+                backgroundColor: 'var(--md-color-background)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                color: 'var(--md-color-text-primary)',
               }}
             />
           </div>
 
           <div>
-            <label className="block mb-2 font-medium">Query</label>
+            <label className="block mb-2 font-medium" style={{ color: 'var(--md-color-text-secondary)' }}>Query</label>
             <textarea
               value={formData.query}
               onChange={(e) => setFormData({ ...formData, query: e.target.value })}
@@ -115,14 +120,15 @@ export function TopicDrawer({ topic, isOpen, onClose, onSave }: TopicDrawerProps
               rows={4}
               className="w-full p-3 rounded-lg font-mono text-sm"
               style={{
-                backgroundColor: 'var(--color-surface-elevated)',
-                border: '1px solid var(--color-border)',
+                backgroundColor: 'var(--md-color-background)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                color: 'var(--md-color-text-primary)',
               }}
             />
           </div>
 
           <div>
-            <label className="block mb-2 font-medium">Cron Expression</label>
+            <label className="block mb-2 font-medium" style={{ color: 'var(--md-color-text-secondary)' }}>Cron Expression</label>
             <input
               type="text"
               value={formData.cron_expression}
@@ -131,8 +137,9 @@ export function TopicDrawer({ topic, isOpen, onClose, onSave }: TopicDrawerProps
               placeholder="0 9 * * *"
               className="w-full p-3 rounded-lg font-mono"
               style={{
-                backgroundColor: 'var(--color-surface-elevated)',
-                border: '1px solid var(--color-border)',
+                backgroundColor: 'var(--md-color-background)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                color: 'var(--md-color-text-primary)',
               }}
             />
             {cronPreview && (
@@ -140,8 +147,8 @@ export function TopicDrawer({ topic, isOpen, onClose, onSave }: TopicDrawerProps
                 className="text-sm mt-2"
                 style={{
                   color: cronPreview.includes('Invalid')
-                    ? 'var(--color-error)'
-                    : 'var(--color-text-secondary)',
+                    ? 'var(--md-color-coral)'
+                    : 'var(--md-color-text-secondary)',
                 }}
               >
                 {cronPreview}
@@ -156,17 +163,28 @@ export function TopicDrawer({ topic, isOpen, onClose, onSave }: TopicDrawerProps
               onChange={(e) => setFormData({ ...formData, is_enabled: e.target.checked })}
               id="is_enabled"
             />
-            <label htmlFor="is_enabled">Enable topic</label>
+            <label htmlFor="is_enabled" style={{ color: 'var(--md-color-text-primary)' }}>Enable topic</label>
           </div>
 
           <div className="flex gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 rounded-lg flex-1"
+              className="px-6 py-2 rounded-lg flex-1 transition-all"
               style={{
-                backgroundColor: 'var(--color-surface-elevated)',
-                border: '1px solid var(--color-border)',
+                backgroundColor: 'var(--md-color-surface-alt)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-button)',
+                color: 'var(--md-color-text-primary)',
+                fontWeight: 'var(--md-font-weight-semibold)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+                e.currentTarget.style.transform = 'var(--md-hover-transform)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+                e.currentTarget.style.transform = 'none';
               }}
             >
               Cancel
@@ -174,10 +192,23 @@ export function TopicDrawer({ topic, isOpen, onClose, onSave }: TopicDrawerProps
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 rounded-lg flex-1"
+              className="px-6 py-2 rounded-lg flex-1 transition-all"
               style={{
-                backgroundColor: 'var(--color-primary)',
-                color: 'white',
+                backgroundColor: 'var(--md-color-primary-blue)',
+                color: 'var(--md-color-text-primary)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-button)',
+                fontWeight: 'var(--md-font-weight-semibold)',
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+                  e.currentTarget.style.transform = 'var(--md-hover-transform)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+                e.currentTarget.style.transform = 'none';
               }}
             >
               {loading ? 'Saving...' : 'Save Topic'}

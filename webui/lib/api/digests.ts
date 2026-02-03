@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Digest, Delivery, Topic, User } from '../types';
+import type { Digest, Delivery, PaginatedResponse } from '../types';
 
 export async function getDigests(params?: {
   topic_id?: string;
@@ -12,7 +12,10 @@ export async function getDigests(params?: {
   if (params?.end_date) query.set('end_date', params.end_date);
 
   const queryString = query.toString();
-  return apiClient<Digest[]>(`/api/v1/digests${queryString ? `?${queryString}` : ''}`);
+  const response = await apiClient<PaginatedResponse<Digest>>(
+    `/api/v1/digests${queryString ? `?${queryString}` : ''}`
+  );
+  return response.items;
 }
 
 export async function getDigest(id: string): Promise<Digest> {
@@ -24,7 +27,10 @@ export async function getDigestContent(id: string): Promise<{ content: string }>
 }
 
 export async function getDigestDeliveries(id: string): Promise<Delivery[]> {
-  return apiClient<Delivery[]>(`/api/v1/digests/${id}/deliveries`);
+  const response = await apiClient<PaginatedResponse<Delivery>>(
+    `/api/v1/digests/${id}/deliveries`
+  );
+  return response.items;
 }
 
 export async function sendDigest(
@@ -35,12 +41,4 @@ export async function sendDigest(
     method: 'POST',
     body: JSON.stringify(data),
   });
-}
-
-export async function getTopics(): Promise<Topic[]> {
-  return apiClient<Topic[]>('/api/v1/topics');
-}
-
-export async function getUsers(): Promise<User[]> {
-  return apiClient<User[]>('/api/v1/users');
 }

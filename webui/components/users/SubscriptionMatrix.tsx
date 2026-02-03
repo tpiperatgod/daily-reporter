@@ -13,7 +13,7 @@ interface SubscriptionMatrixProps {
 }
 
 export function SubscriptionMatrix({ user, subscriptions, onUpdate }: SubscriptionMatrixProps) {
-  const { data: topics } = useApi<Topic[]>('/topics', { fetcher: getTopics });
+  const { data: topics, isLoading: topicsLoading } = useApi<Topic[]>('/topics', { fetcher: getTopics });
   const [loading, setLoading] = useState<string | null>(null);
   const [showAddDropdown, setShowAddDropdown] = useState(false);
 
@@ -71,24 +71,45 @@ export function SubscriptionMatrix({ user, subscriptions, onUpdate }: Subscripti
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+        <h3
+          className="text-xl font-semibold"
+          style={{
+            color: 'var(--md-color-text-primary)',
+            fontWeight: 'var(--md-font-weight-semibold)',
+          }}
+        >
           Subscriptions
         </h3>
         {availableTopics.length > 0 && (
           <div className="relative">
             <button
               onClick={() => setShowAddDropdown(!showAddDropdown)}
-              className="px-4 py-2 rounded-lg font-medium"
-              style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}
+              className="px-4 py-2 rounded-lg font-medium transition-all"
+              style={{
+                backgroundColor: 'var(--md-color-primary-blue)',
+                color: 'var(--md-color-text-primary)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-button)',
+                fontWeight: 'var(--md-font-weight-semibold)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+                e.currentTarget.style.transform = 'var(--md-hover-transform)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+                e.currentTarget.style.transform = 'none';
+              }}
             >
               + Add Subscription
             </button>
             {showAddDropdown && (
               <div
-                className="absolute right-0 mt-2 w-64 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto"
+                className="absolute right-0 mt-2 w-64 rounded-lg z-10 max-h-64 overflow-y-auto"
                 style={{
-                  backgroundColor: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--md-color-surface)',
+                  border: 'var(--md-border-default) solid var(--md-color-border)',
+                  boxShadow: 'var(--md-shadow-card)',
                 }}
               >
                 {availableTopics.map((topic) => (
@@ -98,12 +119,12 @@ export function SubscriptionMatrix({ user, subscriptions, onUpdate }: Subscripti
                     disabled={loading === topic.id}
                     className="w-full px-4 py-3 text-left hover:bg-opacity-50 transition-colors"
                     style={{
-                      borderBottom: '1px solid var(--color-border)',
-                      color: 'var(--color-text-primary)',
+                      borderBottom: 'var(--md-border-thin) solid var(--md-color-border)',
+                      color: 'var(--md-color-text-primary)',
                     }}
                   >
                     <div className="font-medium">{topic.name}</div>
-                    <div className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    <div className="text-sm mt-1" style={{ color: 'var(--md-color-text-secondary)' }}>
                       {topic.query}
                     </div>
                   </button>
@@ -114,15 +135,29 @@ export function SubscriptionMatrix({ user, subscriptions, onUpdate }: Subscripti
         )}
       </div>
 
-      {subscriptions.length === 0 ? (
+      {topicsLoading ? (
         <div
           className="rounded-lg p-8 text-center"
           style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px dashed var(--color-border)',
+            backgroundColor: 'var(--md-color-surface)',
+            border: 'var(--md-border-default) solid var(--md-color-border)',
+            boxShadow: 'var(--md-shadow-card)',
           }}
         >
-          <p style={{ color: 'var(--color-text-secondary)' }}>
+          <p style={{ color: 'var(--md-color-text-secondary)' }}>
+            Loading subscriptions...
+          </p>
+        </div>
+      ) : subscriptions.length === 0 ? (
+        <div
+          className="rounded-lg p-8 text-center"
+          style={{
+            backgroundColor: 'var(--md-color-surface)',
+            border: 'var(--md-border-default) dashed var(--md-color-border)',
+            boxShadow: 'var(--md-shadow-card)',
+          }}
+        >
+          <p style={{ color: 'var(--md-color-text-secondary)' }}>
             No subscriptions yet. Add one to get started!
           </p>
         </div>
@@ -133,16 +168,17 @@ export function SubscriptionMatrix({ user, subscriptions, onUpdate }: Subscripti
               key={subscription.id}
               className="rounded-lg p-4"
               style={{
-                backgroundColor: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
+                backgroundColor: 'var(--md-color-surface)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-card)',
               }}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h4 className="font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                  <h4 className="font-semibold mb-1" style={{ color: 'var(--md-color-text-primary)' }}>
                     {subscription.topic?.name || 'Unknown Topic'}
                   </h4>
-                  <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                  <p className="text-sm mb-4" style={{ color: 'var(--md-color-text-secondary)' }}>
                     {subscription.topic?.query}
                   </p>
 
@@ -155,7 +191,7 @@ export function SubscriptionMatrix({ user, subscriptions, onUpdate }: Subscripti
                         disabled={loading === subscription.id}
                         className="w-4 h-4"
                       />
-                      <span style={{ color: 'var(--color-text-primary)' }}>Feishu</span>
+                      <span style={{ color: 'var(--md-color-text-primary)' }}>Feishu</span>
                     </label>
 
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -166,7 +202,7 @@ export function SubscriptionMatrix({ user, subscriptions, onUpdate }: Subscripti
                         disabled={loading === subscription.id}
                         className="w-4 h-4"
                       />
-                      <span style={{ color: 'var(--color-text-primary)' }}>Email</span>
+                      <span style={{ color: 'var(--md-color-text-primary)' }}>Email</span>
                     </label>
                   </div>
                 </div>
@@ -174,9 +210,25 @@ export function SubscriptionMatrix({ user, subscriptions, onUpdate }: Subscripti
                 <button
                   onClick={() => handleDeleteSubscription(subscription)}
                   disabled={loading === subscription.id}
-                  className="px-3 py-1 rounded text-sm"
-                  style={{ backgroundColor: 'var(--color-error)', color: 'white' }}
+                  className="px-3 py-1 rounded text-sm transition-all"
+                  style={{
+                    backgroundColor: 'var(--md-color-coral)',
+                    color: 'white',
+                    border: 'var(--md-border-default) solid var(--md-color-border)',
+                    boxShadow: 'var(--md-shadow-button)',
+                    fontWeight: 'var(--md-font-weight-semibold)',
+                  }}
                   title="Delete Subscription"
+                  onMouseEnter={(e) => {
+                    if (loading !== subscription.id) {
+                      e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+                      e.currentTarget.style.transform = 'var(--md-hover-transform)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+                    e.currentTarget.style.transform = 'none';
+                  }}
                 >
                   Delete
                 </button>

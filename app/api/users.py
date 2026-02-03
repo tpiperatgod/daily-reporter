@@ -4,6 +4,7 @@ from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -86,9 +87,11 @@ async def list_users(
         db: Database session
 
     Returns:
-        Paginated list of users
+        Paginated list of users with subscriptions
     """
-    query = select(User)
+    query = select(User).options(
+        selectinload(User.subscriptions).selectinload(Subscription.topic)
+    )
 
     # Apply search filter
     if search:
@@ -104,7 +107,7 @@ async def list_users(
     users, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
-        items=[UserResponse.from_orm(u) for u in users],
+        items=[UserWithSubscriptions.from_orm(u) for u in users],
         total=total,
         limit=limit,
         offset=offset
@@ -129,13 +132,12 @@ async def get_user(
     Raises:
         HTTPException: If user not found
     """
-    user = await get_entity_or_404(db, User, user_id)
-
-    # Load subscriptions
-    subs_result = await db.execute(
-        select(Subscription).where(Subscription.user_id == user_id)
+    user = await get_entity_or_404(
+        db,
+        User,
+        user_id,
+        eager_load=[selectinload(User.subscriptions).selectinload(Subscription.topic)]
     )
-    user.subscriptions = subs_result.scalars().all()
 
     return user
 

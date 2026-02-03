@@ -1,8 +1,9 @@
 import { apiClient } from './client';
-import type { Topic } from '../types';
+import type { Topic, PaginatedResponse } from '../types';
 
 export async function getTopics(): Promise<Topic[]> {
-  return apiClient<Topic[]>('/api/v1/topics');
+  const response = await apiClient<PaginatedResponse<Topic>>('/api/v1/topics');
+  return response.items;
 }
 
 export async function getTopic(id: string): Promise<Topic> {

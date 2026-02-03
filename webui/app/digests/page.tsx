@@ -9,8 +9,17 @@ export default function DigestsPage() {
   const [selectedDigest, setSelectedDigest] = useState<Digest | null>(null);
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6">Digest Archive</h1>
+    <div className="p-6">
+      <h1
+        className="mb-6"
+        style={{
+          fontSize: 'var(--md-font-size-h2)',
+          fontWeight: 'var(--md-font-weight-bold)',
+          color: 'var(--md-color-text-primary)',
+        }}
+      >
+        Digest Archive
+      </h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
@@ -26,11 +35,13 @@ export default function DigestsPage() {
             <div
               className="rounded-lg p-6 flex items-center justify-center"
               style={{
-                backgroundColor: 'var(--color-surface)',
+                backgroundColor: 'var(--md-color-surface)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-card)',
                 height: 'calc(100vh - 4rem)',
               }}
             >
-              <p style={{ color: 'var(--color-text-secondary)' }}>
+              <p style={{ color: 'var(--md-color-text-secondary)', fontSize: '18px' }}>
                 Select a digest to preview
               </p>
             </div>

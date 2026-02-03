@@ -1,5 +1,5 @@
 .container {
-  padding: 0;
+  padding: var(--md-spacing-xl);
 }
 
 .pageTitle {

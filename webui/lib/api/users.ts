@@ -1,8 +1,9 @@
 import { apiClient } from './client';
-import type { User } from '../types';
+import type { User, PaginatedResponse } from '../types';
 
 export async function getUsers(): Promise<User[]> {
-  return apiClient<User[]>('/api/v1/users');
+  const response = await apiClient<PaginatedResponse<User>>('/api/v1/users');
+  return response.items;
 }
 
 export async function getUser(id: string): Promise<User> {

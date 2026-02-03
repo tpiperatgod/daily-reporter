@@ -12,6 +12,26 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Color System Bridge - Maps generic --color-* to MotherDuck --md-color-* */
+:root {
+  --color-background: var(--md-color-background);
+  --color-surface: var(--md-color-surface);
+  --color-surface-elevated: var(--md-color-surface-alt);
+  --color-text-primary: var(--md-color-text-primary);
+  --color-text-secondary: var(--md-color-text-secondary);
+  --color-text-tertiary: var(--md-color-text-secondary); /* Use secondary for tertiary */
+  --color-border: var(--md-color-border);
+
+  /* Action Colors */
+  --color-primary: var(--md-color-primary-blue);
+  --color-primary-light: var(--md-color-feature-light-blue);
+  --color-error: var(--md-color-coral);
+  --color-success: var(--md-color-green);
+
+  /* Overlay for modal backdrops */
+  --color-overlay: rgba(0, 0, 0, 0.6); /* Slightly darker than current 0.5 */
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

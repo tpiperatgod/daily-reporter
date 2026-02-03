@@ -16,8 +16,8 @@ export function useApi<T>(
     key,
     options.fetcher,
     {
-      onSuccess: options.onSuccess,
-      onError: options.onError,
+      ...(options.onSuccess && { onSuccess: options.onSuccess }),
+      ...(options.onError && { onError: options.onError }),
       revalidateOnFocus: false,
     }
   );

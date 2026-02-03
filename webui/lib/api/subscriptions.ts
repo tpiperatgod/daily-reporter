@@ -1,8 +1,9 @@
 import { apiClient } from './client';
-import type { Subscription } from '../types';
+import type { Subscription, PaginatedResponse } from '../types';
 
 export async function getSubscriptions(): Promise<Subscription[]> {
-  return apiClient<Subscription[]>('/api/v1/subscriptions');
+  const response = await apiClient<PaginatedResponse<Subscription>>('/api/v1/subscriptions');
+  return response.items;
 }
 
 export async function createSubscription(data: {

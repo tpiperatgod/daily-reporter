@@ -46,40 +46,67 @@ export function UserDetail({ user, onUpdate }: UserDetailProps) {
       <div className="flex items-center gap-4 mb-6">
         <div
           className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-medium"
-          style={{ backgroundColor: 'var(--color-primary)' }}
+          style={{ backgroundColor: 'var(--md-color-primary-blue)' }}
         >
           {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
         </div>
         <div className="flex-1">
-          <h2 className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
+          <h2 className="text-2xl font-bold" style={{ color: 'var(--md-color-text-primary)' }}>
             {user.name || user.email}
           </h2>
           {user.name && (
-            <p style={{ color: 'var(--color-text-secondary)' }}>{user.email}</p>
+            <p style={{ color: 'var(--md-color-text-secondary)' }}>{user.email}</p>
           )}
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="text-sm mt-1" style={{ color: 'var(--md-color-text-secondary)' }}>
             Created {formatTimestamp(user.created_at)}
           </p>
         </div>
         {!isEditing && (
           <button
             onClick={() => setIsEditing(true)}
-            className="px-4 py-2 rounded-lg font-medium"
-            style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}
+            className="px-4 py-2 rounded-lg font-medium transition-all"
+            style={{
+              backgroundColor: 'var(--md-color-primary-blue)',
+              color: 'var(--md-color-text-primary)',
+              border: 'var(--md-border-default) solid var(--md-color-border)',
+              boxShadow: 'var(--md-shadow-button)',
+              fontWeight: 'var(--md-font-weight-semibold)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+              e.currentTarget.style.transform = 'var(--md-hover-transform)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+              e.currentTarget.style.transform = 'none';
+            }}
           >
             Edit
           </button>
         )}
       </div>
 
-      <div className="rounded-lg p-6" style={{ backgroundColor: 'var(--color-surface)' }}>
-        <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--color-text-primary)' }}>
+      <div
+        className="rounded-lg p-6"
+        style={{
+          backgroundColor: 'var(--md-color-surface)',
+          border: 'var(--md-border-default) solid var(--md-color-border)',
+          boxShadow: 'var(--md-shadow-card)',
+        }}
+      >
+        <h3
+          className="text-lg font-semibold mb-4"
+          style={{
+            color: 'var(--md-color-text-primary)',
+            fontWeight: 'var(--md-font-weight-semibold)',
+          }}
+        >
           User Information
         </h3>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--md-color-text-secondary)' }}>
               Name
             </label>
             {isEditing ? (
@@ -90,18 +117,18 @@ export function UserDetail({ user, onUpdate }: UserDetailProps) {
                 placeholder="Enter name"
                 className="w-full px-3 py-2 rounded-lg"
                 style={{
-                  backgroundColor: 'var(--color-background)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-primary)',
+                  backgroundColor: 'var(--md-color-background)',
+                  border: 'var(--md-border-default) solid var(--md-color-border)',
+                  color: 'var(--md-color-text-primary)',
                 }}
               />
             ) : (
-              <p style={{ color: 'var(--color-text-primary)' }}>{user.name || 'Not set'}</p>
+              <p style={{ color: 'var(--md-color-text-primary)' }}>{user.name || 'Not set'}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--md-color-text-secondary)' }}>
               Feishu Webhook URL
             </label>
             {isEditing ? (
@@ -112,20 +139,20 @@ export function UserDetail({ user, onUpdate }: UserDetailProps) {
                 placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
                 className="w-full px-3 py-2 rounded-lg font-mono text-sm"
                 style={{
-                  backgroundColor: 'var(--color-background)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-primary)',
+                  backgroundColor: 'var(--md-color-background)',
+                  border: 'var(--md-border-default) solid var(--md-color-border)',
+                  color: 'var(--md-color-text-primary)',
                 }}
               />
             ) : (
-              <p className="font-mono text-sm" style={{ color: 'var(--color-text-primary)' }}>
+              <p className="font-mono text-sm" style={{ color: 'var(--md-color-text-primary)' }}>
                 {user.feishu_webhook_url || 'Not set'}
               </p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--md-color-text-secondary)' }}>
               Feishu Webhook Secret
             </label>
             {isEditing ? (
@@ -136,13 +163,13 @@ export function UserDetail({ user, onUpdate }: UserDetailProps) {
                 placeholder="Enter webhook secret"
                 className="w-full px-3 py-2 rounded-lg font-mono text-sm"
                 style={{
-                  backgroundColor: 'var(--color-background)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-primary)',
+                  backgroundColor: 'var(--md-color-background)',
+                  border: 'var(--md-border-default) solid var(--md-color-border)',
+                  color: 'var(--md-color-text-primary)',
                 }}
               />
             ) : (
-              <p className="font-mono text-sm" style={{ color: 'var(--color-text-primary)' }}>
+              <p className="font-mono text-sm" style={{ color: 'var(--md-color-text-primary)' }}>
                 {user.feishu_webhook_secret ? '••••••••' : 'Not set'}
               </p>
             )}
@@ -154,16 +181,48 @@ export function UserDetail({ user, onUpdate }: UserDetailProps) {
             <button
               onClick={handleSave}
               disabled={loading}
-              className="px-4 py-2 rounded-lg font-medium"
-              style={{ backgroundColor: 'var(--color-success)', color: 'white' }}
+              className="px-4 py-2 rounded-lg font-medium transition-all"
+              style={{
+                backgroundColor: 'var(--md-color-green)',
+                color: 'white',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-button)',
+                fontWeight: 'var(--md-font-weight-semibold)',
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+                  e.currentTarget.style.transform = 'var(--md-hover-transform)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+                e.currentTarget.style.transform = 'none';
+              }}
             >
               {loading ? 'Saving...' : 'Save Changes'}
             </button>
             <button
               onClick={handleCancel}
               disabled={loading}
-              className="px-4 py-2 rounded-lg font-medium"
-              style={{ backgroundColor: 'var(--color-surface-elevated)', color: 'var(--color-text-primary)' }}
+              className="px-4 py-2 rounded-lg font-medium transition-all"
+              style={{
+                backgroundColor: 'var(--md-color-surface-alt)',
+                color: 'var(--md-color-text-primary)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-button)',
+                fontWeight: 'var(--md-font-weight-semibold)',
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+                  e.currentTarget.style.transform = 'var(--md-hover-transform)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+                e.currentTarget.style.transform = 'none';
+              }}
             >
               Cancel
             </button>

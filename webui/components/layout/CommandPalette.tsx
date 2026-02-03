@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Fuse from 'fuse.js';
-import { getUsers, getTopics, getDigests } from '@/lib/api/digests';
+import { getUsers } from '@/lib/api/users';
+import { getTopics } from '@/lib/api/topics';
+import { getDigests } from '@/lib/api/digests';
 
 interface SearchItem {
   id: string;
@@ -100,12 +102,16 @@ export function CommandPalette() {
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-20"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      style={{ backgroundColor: 'var(--color-overlay)' }}
       onClick={() => setIsOpen(false)}
     >
       <div
         className="rounded-lg w-full max-w-2xl"
-        style={{ backgroundColor: 'var(--color-surface)' }}
+        style={{
+          backgroundColor: 'var(--md-color-surface)',
+          border: 'var(--md-border-default) solid var(--md-color-border)',
+          boxShadow: 'var(--md-shadow-card-elevated)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <input
@@ -116,13 +122,14 @@ export function CommandPalette() {
           autoFocus
           className="w-full p-4 text-lg rounded-t-lg"
           style={{
-            backgroundColor: 'var(--color-surface-elevated)',
+            backgroundColor: 'var(--md-color-background)',
             border: 'none',
             outline: 'none',
+            color: 'var(--md-color-text-primary)',
           }}
         />
 
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-96 overflow-y-auto" style={{ borderTop: 'var(--md-border-thin) solid var(--md-color-border)' }}>
           {results.map((item, index) => (
             <button
               key={item.id}
@@ -130,11 +137,12 @@ export function CommandPalette() {
               className="w-full text-left p-4 hover:bg-opacity-50 transition-colors"
               style={{
                 backgroundColor:
-                  index === 0 ? 'var(--color-primary-light)' : 'transparent',
+                  index === 0 ? 'var(--md-color-feature-light-blue)' : 'transparent',
+                borderBottom: 'var(--md-border-thin) solid var(--md-color-border)',
               }}
             >
-              <p className="font-medium">{item.title}</p>
-              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              <p className="font-medium" style={{ color: 'var(--md-color-text-primary)' }}>{item.title}</p>
+              <p className="text-sm" style={{ color: 'var(--md-color-text-secondary)' }}>
                 {item.subtitle}
               </p>
             </button>
@@ -142,13 +150,13 @@ export function CommandPalette() {
         </div>
 
         <div
-          className="p-3 text-sm text-center border-t"
+          className="p-3 text-sm text-center"
           style={{
-            color: 'var(--color-text-tertiary)',
-            borderColor: 'var(--color-border)',
+            color: 'var(--md-color-text-secondary)',
+            borderTop: 'var(--md-border-thin) solid var(--md-color-border)',
           }}
         >
-          Press <kbd>Esc</kbd> to close
+          Press <kbd style={{ color: 'var(--md-color-text-primary)' }}>Esc</kbd> to close
         </div>
       </div>
     </div>

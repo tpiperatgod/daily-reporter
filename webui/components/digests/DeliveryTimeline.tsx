@@ -25,10 +25,21 @@ export function DeliveryTimeline({ digestId }: DeliveryTimelineProps) {
     <div>
       {failedCount > 0 && (
         <button
-          className="w-full mb-4 p-3 rounded-lg font-medium"
+          className="w-full mb-4 p-3 rounded-lg font-medium transition-all"
           style={{
-            backgroundColor: 'var(--color-error)',
+            backgroundColor: 'var(--md-color-coral)',
             color: 'white',
+            border: 'var(--md-border-default) solid var(--md-color-border)',
+            boxShadow: 'var(--md-shadow-button)',
+            fontWeight: 'var(--md-font-weight-semibold)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+            e.currentTarget.style.transform = 'var(--md-hover-transform)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+            e.currentTarget.style.transform = 'none';
           }}
         >
           Retry All Failed ({failedCount})
@@ -39,28 +50,29 @@ export function DeliveryTimeline({ digestId }: DeliveryTimelineProps) {
         {deliveries.map((delivery) => (
           <div
             key={delivery.id}
-            className="rounded-lg p-4 border"
+            className="rounded-lg p-4"
             style={{
-              backgroundColor: 'var(--color-surface-elevated)',
-              borderColor: 'var(--color-border)',
+              backgroundColor: 'var(--md-color-surface-alt)',
+              border: 'var(--md-border-default) solid var(--md-color-border)',
+              boxShadow: 'var(--md-shadow-card)',
             }}
           >
             <div className="flex items-start gap-3">
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
                 style={{
-                  backgroundColor: 'var(--color-primary)',
+                  backgroundColor: 'var(--md-color-primary-blue)',
                   color: 'white',
                 }}
               >
                 {delivery.user?.name?.[0] || delivery.user?.email[0].toUpperCase() || '?'}
               </div>
               <div className="flex-1">
-                <p className="font-medium">
+                <p className="font-medium" style={{ color: 'var(--md-color-text-primary)' }}>
                   {delivery.user?.name || delivery.user?.email || 'Unknown User'}
                 </p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-sm">
+                  <span className="text-sm" style={{ color: 'var(--md-color-text-secondary)' }}>
                     {delivery.channel === 'feishu' ? 'Feishu' : 'Email'}
                   </span>
                   <span
@@ -73,7 +85,7 @@ export function DeliveryTimeline({ digestId }: DeliveryTimelineProps) {
                     {getStatusLabel(delivery.status)}
                   </span>
                 </div>
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                <p className="text-xs mt-1" style={{ color: 'var(--md-color-text-secondary)' }}>
                   {delivery.sent_at ? formatTimestamp(delivery.sent_at) : 'Not sent yet'}
                   {delivery.retry_count > 0 && ` • ${delivery.retry_count} retries`}
                 </p>
@@ -81,8 +93,8 @@ export function DeliveryTimeline({ digestId }: DeliveryTimelineProps) {
                   <p
                     className="text-xs mt-2 p-2 rounded"
                     style={{
-                      backgroundColor: 'var(--color-error)' + '10',
-                      color: 'var(--color-error)',
+                      backgroundColor: 'var(--md-color-coral)' + '10',
+                      color: 'var(--md-color-coral)',
                     }}
                   >
                     {delivery.error_msg}

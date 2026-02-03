@@ -33,7 +33,7 @@ class UserResponse(BaseModel):
 
 class UserWithSubscriptions(UserResponse):
     """Schema for user with subscription details."""
-    subscriptions: List["SubscriptionResponse"] = []
+    subscriptions: List["SubscriptionWithTopic"] = []
 
     class Config:
         from_attributes = True
@@ -127,6 +127,14 @@ class SubscriptionResponse(BaseModel):
     enable_feishu: bool
     enable_email: bool
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SubscriptionWithTopic(SubscriptionResponse):
+    """Schema for subscription with topic details (used in user listings)."""
+    topic: Optional[TopicResponse] = None
 
     class Config:
         from_attributes = True

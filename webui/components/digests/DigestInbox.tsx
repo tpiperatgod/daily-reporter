@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { getDigests, getTopics } from '@/lib/api/digests';
+import { getDigests } from '@/lib/api/digests';
+import { getTopics } from '@/lib/api/topics';
 import { useApi } from '@/lib/hooks/useApi';
 import { formatTimestamp } from '@/lib/utils/format';
 import type { Digest, Topic } from '@/lib/types';
@@ -26,18 +27,20 @@ export function DigestInbox({ selectedDigestId, onSelect }: DigestInboxProps) {
 
   const getSentimentColor = (sentiment: string) => {
     const colors: Record<string, string> = {
-      positive: 'var(--color-success)',
-      neutral: 'var(--color-primary)',
-      negative: 'var(--color-error)',
+      positive: 'var(--md-color-green)',
+      neutral: 'var(--md-color-primary-blue)',
+      negative: 'var(--md-color-coral)',
     };
-    return colors[sentiment] || 'var(--color-text-secondary)';
+    return colors[sentiment] || 'var(--md-color-text-secondary)';
   };
 
   return (
     <div
       className="rounded-lg p-4"
       style={{
-        backgroundColor: 'var(--color-surface)',
+        backgroundColor: 'var(--md-color-surface)',
+        border: 'var(--md-border-default) solid var(--md-color-border)',
+        boxShadow: 'var(--md-shadow-card)',
         height: 'calc(100vh - 4rem)',
         overflowY: 'auto',
       }}
@@ -48,8 +51,9 @@ export function DigestInbox({ selectedDigestId, onSelect }: DigestInboxProps) {
           onChange={(e) => setFilters({ ...filters, topic_id: e.target.value })}
           className="w-full p-2 rounded"
           style={{
-            backgroundColor: 'var(--color-surface-elevated)',
-            border: '1px solid var(--color-border)',
+            backgroundColor: 'var(--md-color-background)',
+            border: 'var(--md-border-default) solid var(--md-color-border)',
+            color: 'var(--md-color-text-primary)',
           }}
         >
           <option value="">All Topics</option>
@@ -66,8 +70,9 @@ export function DigestInbox({ selectedDigestId, onSelect }: DigestInboxProps) {
           onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
           className="w-full p-2 rounded"
           style={{
-            backgroundColor: 'var(--color-surface-elevated)',
-            border: '1px solid var(--color-border)',
+            backgroundColor: 'var(--md-color-background)',
+            border: 'var(--md-border-default) solid var(--md-color-border)',
+            color: 'var(--md-color-text-primary)',
           }}
         />
 
@@ -77,8 +82,9 @@ export function DigestInbox({ selectedDigestId, onSelect }: DigestInboxProps) {
           onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
           className="w-full p-2 rounded"
           style={{
-            backgroundColor: 'var(--color-surface-elevated)',
-            border: '1px solid var(--color-border)',
+            backgroundColor: 'var(--md-color-background)',
+            border: 'var(--md-border-default) solid var(--md-color-border)',
+            color: 'var(--md-color-text-primary)',
           }}
         />
       </div>
@@ -94,16 +100,19 @@ export function DigestInbox({ selectedDigestId, onSelect }: DigestInboxProps) {
               style={{
                 backgroundColor:
                   selectedDigestId === digest.id
-                    ? 'var(--color-primary-light)'
-                    : 'var(--color-surface-elevated)',
+                    ? 'var(--md-color-feature-light-blue)'
+                    : 'var(--md-color-surface-alt)',
                 borderLeft:
                   selectedDigestId === digest.id
-                    ? '3px solid var(--color-primary)'
-                    : '3px solid transparent',
+                    ? 'var(--md-border-thick) solid var(--md-color-primary-blue)'
+                    : 'var(--md-border-thick) solid transparent',
+                borderTop: 'var(--md-border-default) solid var(--md-color-border)',
+                borderRight: 'var(--md-border-default) solid var(--md-color-border)',
+                borderBottom: 'var(--md-border-default) solid var(--md-color-border)',
               }}
             >
               <div className="flex items-start justify-between mb-2">
-                <h3 className="font-semibold">
+                <h3 className="font-semibold" style={{ color: 'var(--md-color-text-primary)' }}>
                   {digest.topic?.name || 'Digest'}
                 </h3>
                 <span
@@ -116,7 +125,7 @@ export function DigestInbox({ selectedDigestId, onSelect }: DigestInboxProps) {
                   {sentiment}
                 </span>
               </div>
-              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              <p className="text-sm" style={{ color: 'var(--md-color-text-secondary)' }}>
                 {formatTimestamp(digest.created_at)}
               </p>
             </button>

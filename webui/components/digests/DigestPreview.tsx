@@ -5,7 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { DeliveryTimeline } from './DeliveryTimeline';
-import { getDigestContent, getUsers, sendDigest } from '@/lib/api/digests';
+import { getDigestContent, sendDigest } from '@/lib/api/digests';
+import { getUsers } from '@/lib/api/users';
 import { useApi } from '@/lib/hooks/useApi';
 import type { Digest, User } from '@/lib/types';
 
@@ -55,25 +56,28 @@ export function DigestPreview({ digest }: DigestPreviewProps) {
     <div
       className="rounded-lg"
       style={{
-        backgroundColor: 'var(--color-surface)',
+        backgroundColor: 'var(--md-color-surface)',
+        border: 'var(--md-border-default) solid var(--md-color-border)',
+        boxShadow: 'var(--md-shadow-card)',
         height: 'calc(100vh - 4rem)',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
       <div
-        className="flex border-b"
-        style={{ borderColor: 'var(--color-border)' }}
+        className="flex"
+        style={{ borderBottom: 'var(--md-border-default) solid var(--md-color-border)' }}
       >
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className="px-6 py-3 font-medium"
+            className="px-6 py-3 font-medium transition-all"
             style={{
               borderBottom:
-                activeTab === tab.id ? '2px solid var(--color-primary)' : '2px solid transparent',
-              color: activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                activeTab === tab.id ? 'var(--md-border-thick) solid var(--md-color-primary-blue)' : 'var(--md-border-thick) solid transparent',
+              color: activeTab === tab.id ? 'var(--md-color-primary-blue)' : 'var(--md-color-text-secondary)',
+              fontWeight: activeTab === tab.id ? 'var(--md-font-weight-semibold)' : 'var(--md-font-weight-regular)',
             }}
           >
             {tab.label}
@@ -83,7 +87,7 @@ export function DigestPreview({ digest }: DigestPreviewProps) {
 
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'content' && (
-          <div className="prose max-w-none">
+          <div className="prose max-w-none" style={{ color: 'var(--md-color-text-primary)' }}>
             <ReactMarkdown
               components={{
                 code({ node, inline, className, children, ...props }: any) {
@@ -114,13 +118,16 @@ export function DigestPreview({ digest }: DigestPreviewProps) {
 
         {activeTab === 'send' && (
           <div>
-            <h3 className="text-xl font-bold mb-4">Select Recipients</h3>
+            <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--md-color-text-primary)' }}>Select Recipients</h3>
             <div className="space-y-2 mb-6">
               {users?.map((user) => (
                 <label
                   key={user.id}
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer"
-                  style={{ backgroundColor: 'var(--color-surface-elevated)' }}
+                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all"
+                  style={{
+                    backgroundColor: 'var(--md-color-surface-alt)',
+                    border: 'var(--md-border-default) solid var(--md-color-border)',
+                  }}
                 >
                   <input
                     type="checkbox"
@@ -134,8 +141,8 @@ export function DigestPreview({ digest }: DigestPreviewProps) {
                     }}
                   />
                   <div>
-                    <p className="font-medium">{user.name || user.email}</p>
-                    <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    <p className="font-medium" style={{ color: 'var(--md-color-text-primary)' }}>{user.name || user.email}</p>
+                    <p className="text-sm" style={{ color: 'var(--md-color-text-secondary)' }}>
                       {user.email}
                     </p>
                   </div>
@@ -146,11 +153,24 @@ export function DigestPreview({ digest }: DigestPreviewProps) {
             <button
               onClick={handleSend}
               disabled={sending || selectedUserIds.length === 0}
-              className="w-full p-4 rounded-lg font-medium"
+              className="w-full p-4 rounded-lg font-medium transition-all"
               style={{
-                backgroundColor: 'var(--color-primary)',
-                color: 'white',
+                backgroundColor: 'var(--md-color-primary-blue)',
+                color: 'var(--md-color-text-primary)',
+                border: 'var(--md-border-default) solid var(--md-color-border)',
+                boxShadow: 'var(--md-shadow-button)',
+                fontWeight: 'var(--md-font-weight-semibold)',
                 opacity: sending || selectedUserIds.length === 0 ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!sending && selectedUserIds.length > 0) {
+                  e.currentTarget.style.boxShadow = 'var(--md-shadow-button-hover)';
+                  e.currentTarget.style.transform = 'var(--md-hover-transform)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'var(--md-shadow-button)';
+                e.currentTarget.style.transform = 'none';
               }}
             >
               {sending ? 'Sending...' : `Send to ${selectedUserIds.length} users`}
