@@ -19,8 +19,11 @@ async def get_enabled_topics_from_db():
         list: List of topic dictionaries
     """
     from sqlalchemy import select
-    from app.db.session import AsyncSessionLocal
+    from app.db.session import get_async_session_local
     from app.db.models import Topic
+
+    # Ensure session is initialized (needed for Beat process)
+    AsyncSessionLocal = get_async_session_local()
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -65,7 +68,7 @@ def parse_cron_expression(cron_str: str) -> crontab:
     return crontab(
         minute=minute,
         hour=hour,
-        day=day,
+        day_of_month=day,
         month_of_year=month,
         day_of_week=day_of_week
     )
@@ -99,11 +102,6 @@ async def update_beat_schedule():
                     "task": "app.workers.tasks.collect_data",
                     "schedule": cron_schedule,
                     "args": (topic["id"],),
-                    "options": {
-                        "queue": "default",
-                        "exchange": "default",
-                        "routing_key": "default",
-                    },
                 }
 
                 logger.info(
@@ -151,16 +149,30 @@ def update_beat_schedule_sync():
     return asyncio.run(update_beat_schedule())
 
 
-# Initial schedule load (will be updated periodically)
-celery_app.conf.beat_schedule = {}
+# Load initial schedule from database when module is imported
+logger.info("Loading initial beat schedule from database...")
+try:
+    initial_schedule = update_beat_schedule_sync()
+    logger.info(
+        f"Successfully loaded {len(initial_schedule)} tasks from database at startup",
+        extra={"task_names": list(initial_schedule.keys())}
+    )
+except Exception as e:
+    logger.error(
+        f"Failed to load initial beat schedule: {e}",
+        exc_info=True
+    )
+    # Set empty schedule and log error
+    celery_app.conf.beat_schedule = {}
 
-# Schedule to update beat schedule every 5 minutes
-celery_app.conf.beat_schedule.update({
-    "update_beat_schedule": {
-        "task": "app.workers.tasks.update_beat_schedule_task",
-        "schedule": crontab(minute="*/5"),  # Every 5 minutes
-    },
-})
+# Log final schedule state
+logger.info(
+    "Beat schedule initialization complete",
+    extra={
+        "num_tasks": len(celery_app.conf.beat_schedule),
+        "task_names": list(celery_app.conf.beat_schedule.keys())
+    }
+)
 
 
 __all__ = ["update_beat_schedule", "update_beat_schedule_sync"]

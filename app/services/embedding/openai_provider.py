@@ -44,7 +44,7 @@ class OpenAIEmbeddingProvider:
         self.initial_backoff = initial_backoff
 
         self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0),
+            timeout=httpx.Timeout(300.0),
             headers={"Content-Type": "application/json"}
         )
 

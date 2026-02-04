@@ -42,7 +42,7 @@ celery_app.conf.update(
 
     # Beat scheduler settings
     beat_scheduler_filename="celerybeat-schedule",
-    beat_max_loop_interval=300,  # Check schedule every 5 minutes
+    beat_max_loop_interval=60,  # Check schedule every 1 minutes
 )
 
 logger.info(
@@ -53,6 +53,12 @@ logger.info(
         "worker_concurrency": celery_app.conf.worker_concurrency
     }
 )
+
+# Import beat_schedule module to ensure initialization code runs
+# This must be at module level so Beat process loads the schedule
+from app.workers import beat_schedule  # noqa: F401
+
+logger.info("Beat schedule module imported successfully")
 
 
 @celery_app.on_after_configure.connect

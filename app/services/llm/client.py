@@ -77,7 +77,7 @@ class LLMClient:
 
         # HTTP client for chat API - no default Authorization header
         self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0),
+            timeout=httpx.Timeout(300.0),
             headers={
                 "Content-Type": "application/json"
             }
@@ -246,7 +246,7 @@ class LLMClient:
         )
 
         try:
-            # Call LLM with JSON mode
+            # Call LLM with JSON mode (smart parsing handles any response format)
             response = await self._call_llm_json(prompt)
 
             # Parse and validate response
@@ -320,50 +320,243 @@ class LLMClient:
 
         return selected_items
 
-    async def _call_llm_json(self, prompt: str) -> Dict[str, Any]:
+    def _extract_content_from_response(self, data: Dict[str, Any]) -> str:
         """
-        Call LLM API and expect JSON response.
+        Extract content from LLM response, checking multiple possible fields.
+        
+        Some models may return thinking/reasoning in separate fields.
+        
+        Args:
+            data: Raw API response dict
+            
+        Returns:
+            The main content string
+        """
+        message = data["choices"][0]["message"]
+        
+        content = message.get("content", "")
+        reasoning = message.get("reasoning", "")
+        thinking = message.get("thinking", "")
+        
+        # Log if thinking in separate fields (this is fine - won't interfere)
+        if reasoning or thinking:
+            logger.info("Detected separate thinking/reasoning fields in response")
+        
+        return content
 
+    def _find_json_objects(self, content: str) -> List[str]:
+        """
+        Find all JSON objects in content using bracket matching.
+        
+        Handles any nesting depth and string escaping properly.
+        
+        Args:
+            content: Text containing JSON objects
+            
+        Returns:
+            List of JSON object strings (longest first)
+        """
+        candidates = []
+        
+        for i, char in enumerate(content):
+            if char == '{':
+                depth = 0
+                in_string = False
+                escape_next = False
+                
+                for j, c in enumerate(content[i:], start=i):
+                    # State machine to handle strings, escapes, nesting
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    
+                    if c == '\\':
+                        escape_next = True
+                    elif c == '"':
+                        in_string = not in_string
+                    elif not in_string:
+                        if c == '{':
+                            depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                candidates.append(content[i:j+1])
+                                break
+        
+        # Sort by length descending - prefer longer/complete JSON
+        return sorted(candidates, key=len, reverse=True)
+
+    def _validate_digest_structure(self, data: Dict) -> bool:
+        """
+        Check if this looks like a valid digest structure.
+        
+        Args:
+            data: Parsed JSON dict
+            
+        Returns:
+            True if it has all required digest fields
+        """
+        required = {"headline", "highlights", "themes", "sentiment", "stats"}
+        return required.issubset(set(data.keys()))
+
+    def _is_thinking_interference(self, data: Dict) -> bool:
+        """
+        Detect thinking output wrapped as JSON.
+        
+        Pattern: {"error": "I need to analyze..."}
+        
+        Args:
+            data: Parsed JSON dict
+            
+        Returns:
+            True if this looks like thinking interference
+        """
+        # Pattern: single "error" key with thinking-related text
+        if len(data) == 1 and "error" in data:
+            text = str(data["error"]).lower()
+            keywords = ["analyze", "think", "carefully", "process", "step by step", "consider"]
+            return any(kw in text for kw in keywords)
+        return False
+
+    def _extract_json_from_content(self, content: str) -> Dict[str, Any]:
+        """
+        Intelligently extract JSON from response content using multi-strategy approach.
+        
+        Tries strategies in order:
+        1. Direct parse (fast path)
+        2. Strip markdown code blocks
+        3. Bracket matching with structure validation
+        
+        Args:
+            content: Raw response content
+            
+        Returns:
+            Parsed JSON dict
+            
+        Raises:
+            json.JSONDecodeError: If no valid JSON found
+        """
+        # Strategy 1: Direct parse (fast path)
+        try:
+            result = json.loads(content)
+            # Check for thinking interference
+            if self._is_thinking_interference(result):
+                logger.warning(
+                    "Detected thinking interference in JSON response. "
+                    "Model output thinking instead of digest. Trying fallback extraction."
+                )
+            else:
+                return result
+        except json.JSONDecodeError:
+            pass
+        
+        # Strategy 2: Strip markdown code blocks
+        cleaned = content
+        # Remove markdown code blocks
+        cleaned = cleaned.replace('```json', '').replace('```', '')
+        cleaned = cleaned.strip()
+        
+        try:
+            result = json.loads(cleaned)
+            if not self._is_thinking_interference(result):
+                logger.info("Successfully extracted JSON after removing markdown")
+                return result
+        except json.JSONDecodeError:
+            pass
+        
+        # Strategy 3: Bracket matching with validation
+        candidates = self._find_json_objects(content)
+        
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+                
+                # Reject thinking interference
+                if self._is_thinking_interference(parsed):
+                    logger.debug("Skipping JSON candidate - appears to be thinking interference")
+                    continue
+                
+                # Validate structure if it looks like a digest
+                if self._validate_digest_structure(parsed):
+                    logger.info("Successfully extracted and validated JSON from mixed content")
+                    return parsed
+                
+                # If no validation needed, accept first valid JSON
+                logger.info("Successfully extracted JSON using bracket matching")
+                return parsed
+                
+            except json.JSONDecodeError:
+                continue
+        
+        # If we get here, we really can't parse it
+        logger.error(
+            f"Cannot extract valid JSON from content. Tried all strategies.",
+            extra={"content_preview": content[:300]}
+        )
+        raise json.JSONDecodeError(
+            "Could not parse response as valid JSON after trying multiple extraction strategies. "
+            "The model may not be following the JSON format instruction.",
+            content,
+            0
+        )
+
+    async def _call_llm_json(
+        self,
+        prompt: str
+    ) -> Dict[str, Any]:
+        """
+        Call LLM API and intelligently extract JSON from response.
+        
+        Uses multi-strategy parsing to handle various response formats including
+        thinking tokens, markdown wrapping, etc.
+        
         Args:
             prompt: The prompt to send
-
+            
         Returns:
             Parsed JSON response
-
+            
         Raises:
             Exception: If API call fails or response is invalid
         """
         try:
+            # Build base payload
+            json_payload = {
+                "model": self.chat_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that always responds with valid JSON."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": 0.3,
+                "response_format": {"type": "json_object"}
+            }
+
+            # No thinking control - let models use their full capabilities
+            # Our smart parsing handles any response format
+
             response = await self.client.post(
                 f"{self.chat_base_url}/chat/completions",
-                json={
-                    "model": self.chat_model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are a helpful assistant that always responds with valid JSON."
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    "temperature": 0.3,
-                    "response_format": {"type": "json_object"}
-                },
+                json=json_payload,
                 headers={
                     "Authorization": f"Bearer {self.chat_api_key}"
-                }
+                },
+                timeout=300
             )
 
             response.raise_for_status()
             data = response.json()
 
-            # Extract content from response
-            content = data["choices"][0]["message"]["content"]
+            # Extract content from multiple possible sources
+            content = self._extract_content_from_response(data)
 
-            # Parse JSON
-            result = json.loads(content)
+            # Smart JSON extraction with multi-strategy parsing
+            result = self._extract_json_from_content(content)
 
             return result
 

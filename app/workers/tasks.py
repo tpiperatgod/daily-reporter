@@ -505,36 +505,8 @@ async def _notify_async(self, digest_id: str):
         return {"status": "error", "message": str(e)}
 
 
-@celery_app.task(name="app.workers.tasks.update_beat_schedule_task")
-def update_beat_schedule_task():
-    """
-    Periodic task to update Celery Beat schedule from database.
-
-    Runs every 5 minutes to sync schedule with database changes.
-    """
-    logger.info("Running update_beat_schedule_task")
-
-    try:
-        from app.workers.beat_schedule import update_beat_schedule
-
-        loop = asyncio.get_event_loop()
-        schedule = loop.run_until_complete(update_beat_schedule())
-
-        return {
-            "status": "success",
-            "num_tasks": len(schedule)
-        }
-    except Exception as e:
-        logger.error(f"Failed to update beat schedule: {e}")
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
-
 __all__ = [
     "collect_data",
     "generate_digest",
-    "notify",
-    "update_beat_schedule_task"
+    "notify"
 ]

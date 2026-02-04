@@ -41,7 +41,7 @@ class OllamaEmbeddingProvider:
         self.initial_backoff = initial_backoff
 
         self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(120.0),  # Longer timeout for local inference
+            timeout=httpx.Timeout(300.0),  # Longer timeout for local inference
             headers={"Content-Type": "application/json"}
         )
 
