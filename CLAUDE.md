@@ -185,6 +185,16 @@ pytest tests/ -f  # Requires pytest-watch
 - Docker: `postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest`
 - Local: Update `.env` with your local PostgreSQL instance
 
+### Timezone Configuration
+
+**CRON_TIMEZONE:** Timezone for cron expressions (default: `Asia/Shanghai` for CST/UTC+8)
+- Cron expressions in the database are interpreted in this timezone
+- Valid values: IANA timezone names (e.g., `America/New_York`, `Europe/London`, `Asia/Shanghai`)
+- Example: If `CRON_TIMEZONE=Asia/Shanghai` and `cron_expression="53 9 * * *"`:
+  - Tasks trigger at 9:53 AM CST (China Standard Time)
+  - Internally converted to 1:53 AM UTC for Celery Beat
+- To use UTC time for cron expressions, set `CRON_TIMEZONE=UTC`
+
 ### Multi-Provider LLM Setup
 
 You can use different LLM providers for chat and embeddings. Example configurations:

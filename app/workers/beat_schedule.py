@@ -7,6 +7,8 @@ them with Celery Beat for periodic execution.
 from celery.schedules import crontab
 from app.workers.celery_app import celery_app
 from app.core.logging import get_logger
+from app.core.config import settings
+import pytz
 
 logger = get_logger(__name__)
 
@@ -43,19 +45,24 @@ async def get_enabled_topics_from_db():
         ]
 
 
-def parse_cron_expression(cron_str: str) -> crontab:
+def parse_cron_expression(cron_str: str, timezone_str: str = None) -> crontab:
     """
-    Parse cron expression string into Celery crontab schedule.
+    Parse cron expression string into Celery crontab schedule with timezone.
 
     Args:
         cron_str: Cron expression in format "m h d mon dow"
+        timezone_str: Timezone string (e.g., "Asia/Shanghai", "UTC")
+                     If None, uses settings.CRON_TIMEZONE
 
     Returns:
-        celery.schedules.crontab: Celery schedule object
+        celery.schedules.crontab: Celery schedule object with timezone
 
     Raises:
         ValueError: If cron expression is invalid
     """
+    if timezone_str is None:
+        timezone_str = settings.CRON_TIMEZONE
+
     parts = cron_str.strip().split()
     if len(parts) != 5:
         raise ValueError(
@@ -65,13 +72,26 @@ def parse_cron_expression(cron_str: str) -> crontab:
 
     minute, hour, day, month, day_of_week = parts
 
-    return crontab(
+    # Get timezone object
+    try:
+        tz = pytz.timezone(timezone_str)
+    except pytz.UnknownTimeZoneError:
+        logger.error(f"Unknown timezone: {timezone_str}, falling back to UTC")
+        tz = pytz.UTC
+
+    # Create crontab schedule
+    schedule = crontab(
         minute=minute,
         hour=hour,
         day_of_month=day,
         month_of_year=month,
         day_of_week=day_of_week
     )
+    
+    # Override timezone attribute
+    schedule.tz = tz
+    
+    return schedule
 
 
 async def update_beat_schedule():
@@ -93,8 +113,11 @@ async def update_beat_schedule():
 
         for topic in topics:
             try:
-                # Parse cron expression
-                cron_schedule = parse_cron_expression(topic["cron_expression"])
+                # Parse cron expression with timezone
+                cron_schedule = parse_cron_expression(
+                    topic["cron_expression"],
+                    timezone_str=settings.CRON_TIMEZONE
+                )
 
                 # Add to schedule
                 task_name = f'collect_data_{topic["id"]}'
@@ -108,7 +131,8 @@ async def update_beat_schedule():
                     f"Registered topic '{topic['name']}' in beat schedule",
                     extra={
                         "topic_id": topic["id"],
-                        "cron": topic["cron_expression"]
+                        "cron": topic["cron_expression"],
+                        "timezone": settings.CRON_TIMEZONE
                     }
                 )
 

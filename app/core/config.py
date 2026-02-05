@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
 
+    # Timezone for cron expressions (default: CST/Asia/Shanghai)
+    CRON_TIMEZONE: str = "Asia/Shanghai"
+
     class Config:
         env_file = ".env"
         case_sensitive = True
