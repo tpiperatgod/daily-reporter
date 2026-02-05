@@ -324,3 +324,12 @@ class PaginatedResponse(BaseModel):
             offset=offset,
             has_more=has_more
         )
+
+
+# ============================================================================
+# Resolve Forward References
+# ============================================================================
+
+# Rebuild models that use forward references
+UserWithSubscriptions.model_rebuild()
+DigestWithDetails.model_rebuild()

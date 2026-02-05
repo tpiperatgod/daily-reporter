@@ -54,13 +54,14 @@ async def list_digests(
 
     # Apply pagination with eager loading
     query = query.options(
-        selectinload(Digest.topic)
+        selectinload(Digest.topic),
+        selectinload(Digest.deliveries)
     ).order_by(Digest.created_at.desc())
     
     digests, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
-        items=[DigestResponse.from_orm(d) for d in digests],
+        items=[DigestWithDetails.from_orm(d) for d in digests],
         total=total,
         limit=limit,
         offset=offset

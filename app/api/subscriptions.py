@@ -119,7 +119,7 @@ async def list_subscriptions(
     subscriptions, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
-        items=[SubscriptionResponse.from_orm(s) for s in subscriptions],
+        items=[SubscriptionWithDetails.from_orm(s) for s in subscriptions],
         total=total,
         limit=limit,
         offset=offset
