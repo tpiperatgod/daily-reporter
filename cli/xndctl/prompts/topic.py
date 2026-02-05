@@ -1,6 +1,7 @@
 """Interactive prompts for topic operations."""
 
 import click
+from xndctl.utils import console
 from typing import Tuple
 from xndctl.schemas import TopicCreate, TopicUpdate
 from xndctl.utils import validate_cron_expression
@@ -13,8 +14,8 @@ def prompt_topic_create() -> Tuple[TopicCreate, bool]:
         Tuple of (TopicCreate object, confirmation)
     """
     click.echo()
-    click.echo("[bold]Create New Topic[/bold]")
-    click.echo("[dim]* = required field[/dim]")
+    console.print("[bold]Create New Topic[/bold]")
+    console.print("[dim]* = required field[/dim]")
     click.echo()
 
     # Name (required)
@@ -25,16 +26,16 @@ def prompt_topic_create() -> Tuple[TopicCreate, bool]:
 
     # Cron expression (required, with validation)
     click.echo()
-    click.echo("[dim]Cron format: minute hour day month weekday[/dim]")
-    click.echo("[dim]Example: '0 8 * * *' (daily at 8:00 AM)[/dim]")
+    console.print("[dim]Cron format: minute hour day month weekday[/dim]")
+    console.print("[dim]Example: '0 8 * * *' (daily at 8:00 AM)[/dim]")
     click.echo()
 
     while True:
         cron_expression = click.prompt("Cron Expression *", type=str)
         if validate_cron_expression(cron_expression):
             break
-        click.echo("[red]Invalid cron expression. Expected format: 'minute hour day month weekday'[/red]")
-        click.echo("[dim]Example: '0 8 * * *' (daily at 8:00 AM)[/dim]")
+        console.print("[red]Invalid cron expression. Expected format: 'minute hour day month weekday'[/red]")
+        console.print("[dim]Example: '0 8 * * *' (daily at 8:00 AM)[/dim]")
 
     # Create topic object
     topic = TopicCreate(
@@ -45,7 +46,7 @@ def prompt_topic_create() -> Tuple[TopicCreate, bool]:
 
     # Display summary and confirm
     click.echo()
-    click.echo("[bold]Topic Summary:[/bold]")
+    console.print("[bold]Topic Summary:[/bold]")
     click.echo(f"  Name: {name}")
     click.echo(f"  Query: {query}")
     click.echo(f"  Schedule: {cron_expression}")
@@ -74,8 +75,8 @@ def prompt_topic_update(
         Tuple of (TopicUpdate object, confirmation)
     """
     click.echo()
-    click.echo("[bold]Update Topic[/bold]")
-    click.echo("[dim]Press Enter to keep current value[/dim]")
+    console.print("[bold]Update Topic[/bold]")
+    console.print("[dim]Press Enter to keep current value[/dim]")
     click.echo()
 
     # Name
@@ -96,7 +97,7 @@ def prompt_topic_update(
 
     # Cron expression (with validation)
     click.echo()
-    click.echo("[dim]Cron format: minute hour day month weekday[/dim]")
+    console.print("[dim]Cron format: minute hour day month weekday[/dim]")
     cron_expression = None
     while True:
         cron_input = click.prompt(
@@ -109,7 +110,7 @@ def prompt_topic_update(
         if validate_cron_expression(cron_input):
             cron_expression = cron_input
             break
-        click.echo("[red]Invalid cron expression[/red]")
+        console.print("[red]Invalid cron expression[/red]")
 
     # Enabled status
     is_enabled_input = click.confirm(
@@ -128,12 +129,12 @@ def prompt_topic_update(
 
     # Check if anything changed
     if not any([name, query, cron_expression, is_enabled is not None]):
-        click.echo("[yellow]No changes specified[/yellow]")
+        console.print("[yellow]No changes specified[/yellow]")
         return update, False
 
     # Display summary and confirm
     click.echo()
-    click.echo("[bold]Changes:[/bold]")
+    console.print("[bold]Changes:[/bold]")
     if name:
         click.echo(f"  Name: {name}")
     if query:

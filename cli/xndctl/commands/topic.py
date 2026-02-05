@@ -11,7 +11,8 @@ from xndctl.utils import (
     confirm_action,
     display_success,
     display_warning,
-    validate_cron_expression
+    validate_cron_expression,
+    console
 )
 from xndctl.prompts.topic import prompt_topic_create, prompt_topic_update
 from xndctl.client import NotFoundError, ValidationError
@@ -47,7 +48,7 @@ def create(
         else:
             # Flag-based mode
             if not all([name, query, cron_expression]):
-                click.echo("[red]Error:[/red] --name, --query, and --cron are required")
+                console.print("[red]Error:[/red] --name, --query, and --cron are required")
                 click.echo("Use -p for interactive mode")
                 return
 
@@ -119,7 +120,7 @@ def get_topic(ctx: Context, topic_id: str, name: str):
             if not topic:
                 raise NotFoundError(f"Topic with name '{name}' not found")
         else:
-            click.echo("[red]Error:[/red] Specify --id or --name")
+            console.print("[red]Error:[/red] Specify --id or --name")
             return
 
         display_output(topic, format=ctx.output_format, title="Topic Details")
@@ -127,7 +128,7 @@ def get_topic(ctx: Context, topic_id: str, name: str):
         # Show statistics if in table format
         if ctx.output_format == "table":
             click.echo()
-            click.echo("[bold]Statistics:[/bold]")
+            console.print("[bold]Statistics:[/bold]")
             click.echo(f"  Total Items: {topic.total_items}")
             click.echo(f"  Total Digests: {topic.total_digests}")
             click.echo(f"  Total Subscriptions: {topic.total_subscriptions}")
@@ -165,7 +166,7 @@ def update(
             if not topic:
                 raise NotFoundError(f"Topic with name '{lookup_name}' not found")
         else:
-            click.echo("[red]Error:[/red] Specify --id or --name to identify topic")
+            console.print("[red]Error:[/red] Specify --id or --name to identify topic")
             return
 
         if prompt:
@@ -197,7 +198,7 @@ def update(
 
             # Check if anything to update
             if not any([new_name, query, cron_expression, enable is not None]):
-                click.echo("[yellow]No updates specified[/yellow]")
+                console.print("[yellow]No updates specified[/yellow]")
                 click.echo("Use -p for interactive mode")
                 return
 
@@ -230,7 +231,7 @@ def delete(ctx: Context, topic_id: str, name: str, yes: bool):
             if not topic:
                 raise NotFoundError(f"Topic with name '{name}' not found")
         else:
-            click.echo("[red]Error:[/red] Specify --id or --name")
+            console.print("[red]Error:[/red] Specify --id or --name")
             return
 
         # Show topic info

@@ -4,7 +4,7 @@ import sys
 import click
 from xndctl.config import load_config, init_config, get_config_path
 from xndctl.client import APIClient
-from xndctl.utils import handle_error
+from xndctl.utils import handle_error, console
 
 
 # Context object to pass between commands
@@ -92,7 +92,7 @@ def init(ctx: Context, base_url: str):
     try:
         config = init_config(base_url=base_url, interactive=True)
         click.echo()
-        click.echo("[green]✓[/green] Configuration initialized successfully")
+        console.print("[green]✓[/green] Configuration initialized successfully")
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)
 

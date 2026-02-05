@@ -1,6 +1,7 @@
 """Interactive prompts for user operations."""
 
 import click
+from xndctl.utils import console
 from typing import Optional, Tuple
 from xndctl.schemas import UserCreate, UserUpdate
 
@@ -12,8 +13,8 @@ def prompt_user_create() -> Tuple[UserCreate, bool]:
         Tuple of (UserCreate object, confirmation)
     """
     click.echo()
-    click.echo("[bold]Create New User[/bold]")
-    click.echo("[dim]* = required field[/dim]")
+    console.print("[bold]Create New User[/bold]")
+    console.print("[dim]* = required field[/dim]")
     click.echo()
 
     # Name (optional)
@@ -30,7 +31,7 @@ def prompt_user_create() -> Tuple[UserCreate, bool]:
         email = click.prompt("Email *", type=str)
         if email and "@" in email:
             break
-        click.echo("[red]Invalid email address[/red]")
+        console.print("[red]Invalid email address[/red]")
 
     # Feishu webhook URL (optional)
     feishu_webhook_url = click.prompt(
@@ -63,7 +64,7 @@ def prompt_user_create() -> Tuple[UserCreate, bool]:
 
     # Display summary and confirm
     click.echo()
-    click.echo("[bold]User Summary:[/bold]")
+    console.print("[bold]User Summary:[/bold]")
     click.echo(f"  Name: {name or '(not set)'}")
     click.echo(f"  Email: {email}")
     click.echo(f"  Feishu Webhook: {feishu_webhook_url or '(not set)'}")
@@ -86,8 +87,8 @@ def prompt_user_update(current_name: Optional[str], current_email: str) -> Tuple
         Tuple of (UserUpdate object, confirmation)
     """
     click.echo()
-    click.echo("[bold]Update User[/bold]")
-    click.echo("[dim]Press Enter to keep current value[/dim]")
+    console.print("[bold]Update User[/bold]")
+    console.print("[dim]Press Enter to keep current value[/dim]")
     click.echo()
 
     # Name
@@ -136,12 +137,12 @@ def prompt_user_update(current_name: Optional[str], current_email: str) -> Tuple
 
     # Check if anything changed
     if not any([name, email, feishu_webhook_url, feishu_webhook_secret]):
-        click.echo("[yellow]No changes specified[/yellow]")
+        console.print("[yellow]No changes specified[/yellow]")
         return update, False
 
     # Display summary and confirm
     click.echo()
-    click.echo("[bold]Changes:[/bold]")
+    console.print("[bold]Changes:[/bold]")
     if name:
         click.echo(f"  Name: {name}")
     if email:

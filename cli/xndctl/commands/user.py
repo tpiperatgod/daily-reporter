@@ -10,7 +10,8 @@ from xndctl.utils import (
     handle_error,
     confirm_action,
     display_success,
-    display_warning
+    display_warning,
+    console
 )
 from xndctl.prompts.user import prompt_user_create, prompt_user_update
 from xndctl.client import NotFoundError
@@ -48,7 +49,7 @@ def create(
         else:
             # Flag-based mode
             if not email:
-                click.echo("[red]Error:[/red] --email is required")
+                console.print("[red]Error:[/red] --email is required")
                 click.echo("Use -p for interactive mode")
                 return
 
@@ -119,7 +120,7 @@ def get_user(ctx: Context, user_id: str, name: str, email: str):
             if not user:
                 raise NotFoundError(f"User with email '{email}' not found")
         else:
-            click.echo("[red]Error:[/red] Specify --id, --name, or --email")
+            console.print("[red]Error:[/red] Specify --id, --name, or --email")
             return
 
         display_output(user, format=ctx.output_format, title="User Details")
@@ -127,7 +128,7 @@ def get_user(ctx: Context, user_id: str, name: str, email: str):
         # Show subscriptions if any
         if user.subscriptions and ctx.output_format == "table":
             click.echo()
-            click.echo(f"[bold]Subscriptions ({len(user.subscriptions)}):[/bold]")
+            console.print(f"[bold]Subscriptions ({len(user.subscriptions)}):[/bold]")
             for sub in user.subscriptions:
                 topic_name = sub.topic.name if sub.topic else "Unknown"
                 channels = []
@@ -176,7 +177,7 @@ def update(
             if not user:
                 raise NotFoundError(f"User with email '{lookup_email}' not found")
         else:
-            click.echo("[red]Error:[/red] Specify --id, --name, or --email to identify user")
+            console.print("[red]Error:[/red] Specify --id, --name, or --email to identify user")
             return
 
         if prompt:
@@ -196,7 +197,7 @@ def update(
 
             # Check if anything to update
             if not any([new_name, new_email, feishu_webhook_url, feishu_webhook_secret]):
-                click.echo("[yellow]No updates specified[/yellow]")
+                console.print("[yellow]No updates specified[/yellow]")
                 click.echo("Use -p for interactive mode")
                 return
 
@@ -234,7 +235,7 @@ def delete(ctx: Context, user_id: str, name: str, email: str, yes: bool):
             if not user:
                 raise NotFoundError(f"User with email '{email}' not found")
         else:
-            click.echo("[red]Error:[/red] Specify --id, --name, or --email")
+            console.print("[red]Error:[/red] Specify --id, --name, or --email")
             return
 
         # Show user info

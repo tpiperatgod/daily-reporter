@@ -10,7 +10,8 @@ from xndctl.utils import (
     handle_error,
     confirm_action,
     display_success,
-    display_warning
+    display_warning,
+    console
 )
 from xndctl.prompts.subscription import prompt_subscription_create
 from xndctl.client import NotFoundError
@@ -33,11 +34,11 @@ def create(ctx: Context, prompt: bool):
         topics_result = ctx.client.list_topics(limit=1000)
 
         if not users_result.items:
-            click.echo("[red]Error:[/red] No users found. Create a user first.")
+            console.print("[red]Error:[/red] No users found. Create a user first.")
             return
 
         if not topics_result.items:
-            click.echo("[red]Error:[/red] No topics found. Create a topic first.")
+            console.print("[red]Error:[/red] No topics found. Create a topic first.")
             return
 
         # Interactive mode
@@ -134,18 +135,18 @@ def get_subscription(ctx: Context, subscription_id: str):
         # Show additional info in table format
         if ctx.output_format == "table":
             click.echo()
-            click.echo("[bold]User:[/bold]")
+            console.print("[bold]User:[/bold]")
             click.echo(f"  Name: {subscription.user.name or '(no name)'}")
             click.echo(f"  Email: {subscription.user.email}")
             click.echo()
-            click.echo("[bold]Topic:[/bold]")
+            console.print("[bold]Topic:[/bold]")
             click.echo(f"  Name: {subscription.topic.name}")
             click.echo(f"  Query: {subscription.topic.query}")
             click.echo(f"  Schedule: {subscription.topic.cron_expression}")
             click.echo()
-            click.echo("[bold]Notification Channels:[/bold]")
-            click.echo(f"  Feishu: {'[green]Enabled[/green]' if subscription.enable_feishu else '[red]Disabled[/red]'}")
-            click.echo(f"  Email: {'[green]Enabled[/green]' if subscription.enable_email else '[red]Disabled[/red]'}")
+            console.print("[bold]Notification Channels:[/bold]")
+            console.print(f"  Feishu: {'[green]Enabled[/green]' if subscription.enable_feishu else '[red]Disabled[/red]'}")
+            console.print(f"  Email: {'[green]Enabled[/green]' if subscription.enable_email else '[red]Disabled[/red]'}")
 
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)

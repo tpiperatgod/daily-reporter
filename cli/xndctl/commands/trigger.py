@@ -7,7 +7,8 @@ from xndctl.utils import (
     handle_error,
     display_success,
     display_warning,
-    display_info
+    display_info,
+    console
 )
 from xndctl.prompts.subscription import prompt_select_topic
 
@@ -22,7 +23,7 @@ def trigger(ctx: Context, prompt: bool):
         topics_result = ctx.client.list_topics(limit=1000)
 
         if not topics_result.items:
-            click.echo("[red]Error:[/red] No topics found. Create a topic first.")
+            console.print("[red]Error:[/red] No topics found. Create a topic first.")
             return
 
         # Show enabled topics count

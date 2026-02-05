@@ -1,6 +1,7 @@
 """Interactive prompts for subscription operations."""
 
 import click
+from xndctl.utils import console
 from typing import List, Tuple, Optional
 from uuid import UUID
 from xndctl.schemas import SubscriptionCreate, UserWithSubscriptions, TopicWithStats
@@ -20,11 +21,11 @@ def prompt_subscription_create(
         Tuple of (SubscriptionCreate object, confirmation)
     """
     click.echo()
-    click.echo("[bold]Create New Subscription[/bold]")
+    console.print("[bold]Create New Subscription[/bold]")
     click.echo()
 
     # Select user
-    click.echo("[bold]Available Users:[/bold]")
+    console.print("[bold]Available Users:[/bold]")
     for i, user in enumerate(users, 1):
         display_name = user.name or "(no name)"
         click.echo(f"  {i}. {display_name} ({user.email})")
@@ -35,16 +36,16 @@ def prompt_subscription_create(
             if 1 <= user_idx <= len(users):
                 selected_user = users[user_idx - 1]
                 break
-            click.echo(f"[red]Invalid selection. Choose 1-{len(users)}[/red]")
+            console.print(f"[red]Invalid selection. Choose 1-{len(users)}[/red]")
         except Exception:
-            click.echo(f"[red]Invalid input. Enter a number 1-{len(users)}[/red]")
+            console.print(f"[red]Invalid input. Enter a number 1-{len(users)}[/red]")
 
     # Select topic
     click.echo()
-    click.echo("[bold]Available Topics:[/bold]")
+    console.print("[bold]Available Topics:[/bold]")
     for i, topic in enumerate(topics, 1):
         status = "[green]enabled[/green]" if topic.is_enabled else "[red]disabled[/red]"
-        click.echo(f"  {i}. {topic.name} - {topic.query} ({status})")
+        console.print(f"  {i}. {topic.name} - {topic.query} ({status})")
 
     while True:
         try:
@@ -52,18 +53,18 @@ def prompt_subscription_create(
             if 1 <= topic_idx <= len(topics):
                 selected_topic = topics[topic_idx - 1]
                 break
-            click.echo(f"[red]Invalid selection. Choose 1-{len(topics)}[/red]")
+            console.print(f"[red]Invalid selection. Choose 1-{len(topics)}[/red]")
         except Exception:
-            click.echo(f"[red]Invalid input. Enter a number 1-{len(topics)}[/red]")
+            console.print(f"[red]Invalid input. Enter a number 1-{len(topics)}[/red]")
 
     # Select notification channels
     click.echo()
-    click.echo("[bold]Notification Channels:[/bold]")
+    console.print("[bold]Notification Channels:[/bold]")
     enable_feishu = click.confirm("Enable Feishu notifications?", default=True)
     enable_email = click.confirm("Enable Email notifications?", default=True)
 
     if not enable_feishu and not enable_email:
-        click.echo("[yellow]Warning: No notification channels enabled[/yellow]")
+        console.print("[yellow]Warning: No notification channels enabled[/yellow]")
 
     # Create subscription object
     subscription = SubscriptionCreate(
@@ -75,7 +76,7 @@ def prompt_subscription_create(
 
     # Display summary and confirm
     click.echo()
-    click.echo("[bold]Subscription Summary:[/bold]")
+    console.print("[bold]Subscription Summary:[/bold]")
     click.echo(f"  User: {selected_user.name or '(no name)'} ({selected_user.email})")
     click.echo(f"  Topic: {selected_topic.name}")
     channels = []
@@ -101,7 +102,7 @@ def prompt_select_user(users: List[UserWithSubscriptions]) -> Optional[UUID]:
         Selected user ID or None if cancelled
     """
     click.echo()
-    click.echo("[bold]Select User:[/bold]")
+    console.print("[bold]Select User:[/bold]")
     for i, user in enumerate(users, 1):
         display_name = user.name or "(no name)"
         click.echo(f"  {i}. {display_name} ({user.email})")
@@ -113,9 +114,9 @@ def prompt_select_user(users: List[UserWithSubscriptions]) -> Optional[UUID]:
                 return None
             if 1 <= user_input <= len(users):
                 return users[user_input - 1].id
-            click.echo(f"[red]Invalid selection. Choose 0-{len(users)}[/red]")
+            console.print(f"[red]Invalid selection. Choose 0-{len(users)}[/red]")
         except Exception:
-            click.echo(f"[red]Invalid input. Enter a number 0-{len(users)}[/red]")
+            console.print(f"[red]Invalid input. Enter a number 0-{len(users)}[/red]")
 
 
 def prompt_select_topic(topics: List[TopicWithStats]) -> Optional[UUID]:
@@ -128,10 +129,10 @@ def prompt_select_topic(topics: List[TopicWithStats]) -> Optional[UUID]:
         Selected topic ID or None if cancelled
     """
     click.echo()
-    click.echo("[bold]Select Topic:[/bold]")
+    console.print("[bold]Select Topic:[/bold]")
     for i, topic in enumerate(topics, 1):
         status = "[green]enabled[/green]" if topic.is_enabled else "[red]disabled[/red]"
-        click.echo(f"  {i}. {topic.name} - {topic.query} ({status})")
+        console.print(f"  {i}. {topic.name} - {topic.query} ({status})")
 
     while True:
         try:
@@ -140,6 +141,6 @@ def prompt_select_topic(topics: List[TopicWithStats]) -> Optional[UUID]:
                 return None
             if 1 <= topic_input <= len(topics):
                 return topics[topic_input - 1].id
-            click.echo(f"[red]Invalid selection. Choose 0-{len(topics)}[/red]")
+            console.print(f"[red]Invalid selection. Choose 0-{len(topics)}[/red]")
         except Exception:
-            click.echo(f"[red]Invalid input. Enter a number 0-{len(topics)}[/red]")
+            console.print(f"[red]Invalid input. Enter a number 0-{len(topics)}[/red]")
