@@ -8,11 +8,29 @@ set -e  # 遇到错误立即退出
 echo "🚀 Starting X-News-Digest in local development mode..."
 echo ""
 
+# 自动检测 conda 命令
+if command -v conda > /dev/null 2>&1; then
+    CONDA_CMD="conda"
+else
+    # Fallback - 检查常见安装位置
+    for path in "$HOME/anaconda3" "$HOME/miniconda3" "/opt/anaconda3" "/opt/miniconda3" "/usr/local/anaconda3" "/usr/local/miniconda3"; do
+        if [ -f "$path/bin/conda" ]; then
+            CONDA_CMD="$path/bin/conda"
+            break
+        fi
+    done
+
+    if [ -z "$CONDA_CMD" ]; then
+        echo "❌ Could not find conda installation!"
+        echo "   Please ensure conda is installed and added to PATH."
+        exit 1
+    fi
+fi
+
 # 检查并激活 conda 环境
-CONDA_BASE="/Users/laminar/anaconda3"
 CONDA_ENV="x-news-digest"
 
-if ! "$CONDA_BASE/bin/conda" env list | grep -q "^$CONDA_ENV "; then
+if ! $CONDA_CMD env list | grep -q "^$CONDA_ENV "; then
     echo "❌ Conda environment '$CONDA_ENV' not found!"
     echo "   Please run: conda create -n $CONDA_ENV python=3.13"
     echo "   Then: conda activate $CONDA_ENV && pip install -r requirements.txt"
@@ -20,7 +38,7 @@ if ! "$CONDA_BASE/bin/conda" env list | grep -q "^$CONDA_ENV "; then
 fi
 
 # 激活 conda 环境
-eval "$("$CONDA_BASE/bin/conda" shell.bash hook)"
+eval "$($CONDA_CMD shell.bash hook)"
 conda activate "$CONDA_ENV"
 
 if [ "$CONDA_DEFAULT_ENV" != "$CONDA_ENV" ]; then
