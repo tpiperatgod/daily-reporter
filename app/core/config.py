@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     LLM_EMBEDDING_BATCH_SIZE: int = 64  # Max items per batch request
     LLM_EMBEDDING_RETRY_MAX_ATTEMPTS: int = 5  # Retry attempts on 429
     LLM_EMBEDDING_RETRY_INITIAL_BACKOFF: float = 1.0  # Initial backoff (seconds)
+    
+    # Embedding dimension for vector storage
+    LLM_EMBEDDING_DIMENSION: int = 1536  # Default for OpenAI text-embedding-3-small
 
     # SMTP Configuration
     SMTP_HOST: str

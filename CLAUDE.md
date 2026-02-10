@@ -61,6 +61,61 @@ send_notifications task → Feishu/Email delivery
 - **Item**: Raw tweet data with `source_id` (unique), `embedding_hash` (deduplication)
 - **Digest**: Generated summary with time window and JSON structure
 - **Delivery**: Notification tracking (status, retry_count, error_msg)
+- **MemoryFact**: Long-term knowledge storage with semantic search (pgvector)
+
+### Long-term Memory System (RAG)
+
+The system implements a **Recall-Reason-Memorize** loop for contextual digest generation:
+
+**Architecture:**
+- **MemoryFact Model**: Stores atomic facts with pgvector embeddings (1536-dimensional)
+- **MemoryService**: Semantic search and fact storage (`app/services/memory/`)
+- **Enhanced LLM Client**: Memory-aware digest generation with fact extraction
+- **Worker Integration**: Automatic memory loop in `generate_digest` task
+
+**Recall-Reason-Memorize Flow:**
+
+```
+1. RECALL: Generate search query from tweets → Retrieve relevant historical facts (cosine similarity)
+2. REASON: Generate digest with historical context → Extract new atomic facts
+3. MEMORIZE: Store new facts with embeddings → Link to digest metadata
+```
+
+**Key Features:**
+- **Semantic Search**: HNSW index for fast vector similarity (cosine distance)
+- **Graceful Degradation**: Memory failures don't break digest generation
+- **Atomic Facts**: LLM extracts standalone, self-contained facts (no pronouns/unclear refs)
+- **Deduplication**: Only NEW facts are stored (not in historical context)
+- **Source Tracking**: Facts linked to digest_id, tweet_ids, time_window
+
+**Configuration:**
+- `LLM_EMBEDDING_DIMENSION`: Vector dimension (default: 1536 for OpenAI text-embedding-3-small)
+- Common dimensions: OpenAI (1536), GLM (1024), Ollama bge-m3 (384)
+
+**Database:**
+- Requires PostgreSQL with pgvector extension
+- Migration `003_add_memory_facts.py` creates table and HNSW index
+- HNSW parameters: m=16, ef_construction=64 (tunable for dataset size)
+
+**Usage Example:**
+```python
+from app.services.memory import MemoryService
+
+# Search relevant facts
+facts = await memory_service.search_relevant_facts(
+    topic_id=topic_id,
+    query_text="AI model releases",
+    limit=5,
+    threshold=0.7  # Cosine similarity threshold
+)
+
+# Store new facts
+count = await memory_service.store_new_facts(
+    topic_id=topic_id,
+    facts=["DeepSeek released V3 on Jan 15, 2025"],
+    source_metadata={"digest_id": str(digest_id)}
+)
+```
 
 ### Provider System (`app/services/provider/`)
 

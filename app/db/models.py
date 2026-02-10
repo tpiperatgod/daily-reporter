@@ -5,7 +5,14 @@ from sqlalchemy.sql import func
 from datetime import datetime
 import uuid
 
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    # Fallback for environments without pgvector installed
+    Vector = None
+
 from app.db.base import Base
+from app.core.config import settings
 
 
 class User(Base):
@@ -44,6 +51,7 @@ class Topic(Base):
     subscriptions = relationship("Subscription", back_populates="topic", cascade="all, delete-orphan")
     items = relationship("Item", back_populates="topic", cascade="all, delete-orphan")
     digests = relationship("Digest", back_populates="topic", cascade="all, delete-orphan")
+    memory_facts = relationship("MemoryFact", back_populates="topic", cascade="all, delete-orphan")
 
     # Index for scheduling queries
     __table_args__ = (
@@ -157,3 +165,29 @@ class Delivery(Base):
 
     def __repr__(self):
         return f"<Delivery {self.channel} - {self.status}>"
+
+
+
+class MemoryFact(Base):
+    """Memory fact model for storing long-term knowledge with semantic search."""
+    __tablename__ = "memory_facts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id = Column(UUID(as_uuid=True), ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)  # Atomic fact text
+    embedding = Column(Vector(settings.LLM_EMBEDDING_DIMENSION) if Vector else JSONB, nullable=False)  # pgvector column
+    source_metadata = Column(JSONB, nullable=True)  # {digest_id: uuid, tweet_ids: [], time_window: {}}
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    topic = relationship("Topic", back_populates="memory_facts")
+
+    # Indexes
+    __table_args__ = (
+        Index('ix_memory_facts_topic_created', 'topic_id', 'created_at'),
+        # HNSW index for fast vector similarity search
+        # Note: This index will be created in the migration with proper pgvector syntax
+    )
+
+    def __repr__(self):
+        return f"<MemoryFact {self.id}>"

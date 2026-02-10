@@ -48,6 +48,16 @@ class DigestResult(BaseModel):
         return v
 
 
+
+class DigestResultWithMemory(BaseModel):
+    """Extended digest result with memory extraction."""
+    digest: DigestResult = Field(..., description="Standard digest result")
+    new_facts: List[str] = Field(
+        default_factory=list,
+        description="New atomic facts to remember (empty if nothing new)"
+    )
+
+
 class LLMClient:
     """
     Client for interacting with LLM APIs (DeepSeek/OpenAI-compatible).
@@ -273,6 +283,149 @@ class LLMClient:
             except Exception as retry_error:
                 logger.error(f"Retry also failed: {retry_error}")
                 raise
+
+
+    async def generate_digest_with_memory(
+        self,
+        topic: str,
+        items: List[Dict[str, Any]],
+        time_window_start: datetime,
+        time_window_end: datetime,
+        historical_context: List[str] = None
+    ) -> tuple[DigestResult, List[str]]:
+        """
+        Generate a digest with historical context and extract new facts.
+
+        Args:
+            topic: Topic name
+            items: List of item dictionaries (from DB)
+            time_window_start: Start of time window
+            time_window_end: End of time window
+            historical_context: List of relevant historical facts
+
+        Returns:
+            Tuple of (DigestResult, new_facts_list)
+
+        Raises:
+            Exception: If digest generation fails
+        """
+        if not items:
+            logger.warning("No items to generate digest from")
+            # Return empty digest
+            return DigestResult(
+                headline=f"No new developments for {topic}",
+                highlights=[],
+                themes=[],
+                sentiment="neutral",
+                stats=DigestStats(
+                    total_posts_analyzed=0,
+                    unique_authors=0,
+                    total_engagement=0,
+                    avg_engagement_per_post=0.0
+                )
+            ), []
+
+        logger.info(
+            f"Generating memory-aware digest for topic: {topic}",
+            extra={
+                "topic": topic,
+                "num_items": len(items),
+                "num_historical_facts": len(historical_context or []),
+                "time_window": f"{time_window_start} to {time_window_end}"
+            }
+        )
+
+        # Prepare items for prompt (with token management)
+        posts = self._prepare_posts_for_prompt(items)
+
+        # Build prompt with historical context
+        from app.services.llm.prompts import build_digest_prompt_with_memory
+        prompt = build_digest_prompt_with_memory(
+            topic=topic,
+            time_window_start=time_window_start,
+            time_window_end=time_window_end,
+            posts=posts,
+            total_items=len(items),
+            historical_context=historical_context or []
+        )
+
+        try:
+            # Call LLM with JSON mode (smart parsing handles any response format)
+            response = await self._call_llm_json(prompt)
+
+            # Parse and validate response with memory
+            result = DigestResultWithMemory(**response)
+
+            logger.info(
+                f"Successfully generated memory-aware digest for {topic}",
+                extra={
+                    "num_highlights": len(result.digest.highlights),
+                    "sentiment": result.digest.sentiment,
+                    "num_new_facts": len(result.new_facts)
+                }
+            )
+
+            return result.digest, result.new_facts
+
+        except Exception as e:
+            logger.error(f"Failed to generate memory-aware digest: {e}")
+            # Retry once
+            logger.info("Retrying memory-aware digest generation...")
+            try:
+                response = await self._call_llm_json(prompt)
+                result = DigestResultWithMemory(**response)
+                return result.digest, result.new_facts
+            except Exception as retry_error:
+                logger.error(f"Retry also failed: {retry_error}")
+                raise
+
+    async def _call_llm_simple(self, prompt: str) -> str:
+        """
+        Call LLM for simple text generation (non-JSON).
+
+        Args:
+            prompt: The prompt to send to the LLM
+
+        Returns:
+            The LLM's text response
+
+        Raises:
+            Exception: If LLM call fails
+        """
+        try:
+            json_payload = {
+                "model": self.chat_model,
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 500,  # Reasonable for short text generation
+                "temperature": 0.7
+            }
+
+            response = await self.client.post(
+                f"{self.chat_base_url}/chat/completions",
+                json=json_payload,
+                headers={
+                    "Authorization": f"Bearer {self.chat_api_key}"
+                },
+                timeout=300
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            # Extract content using existing helper method
+            content = self._extract_content_from_response(data)
+            return content.strip()
+
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.text if e.response else "No response body"
+            logger.error(f"LLM simple call failed: {e}\nResponse: {error_detail}")
+            raise
+        except Exception as e:
+            logger.error(f"LLM simple call failed: {e}")
+            raise
 
     def _prepare_posts_for_prompt(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

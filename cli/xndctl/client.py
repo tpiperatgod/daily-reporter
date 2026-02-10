@@ -82,7 +82,7 @@ class APIClient:
         with self._get_client() as client:
             response = client.post(
                 f"{self.base_url}/api/v1/users",
-                json=user.model_dump(exclude_none=True)
+                json=user.model_dump(mode='json', exclude_none=True)
             )
             data = self._handle_response(response)
             return UserResponse(**data)
@@ -110,7 +110,7 @@ class APIClient:
         with self._get_client() as client:
             response = client.patch(
                 f"{self.base_url}/api/v1/users/{user_id}",
-                json=user.model_dump(exclude_none=True)
+                json=user.model_dump(mode='json', exclude_none=True)
             )
             data = self._handle_response(response)
             return UserResponse(**data)
@@ -146,7 +146,7 @@ class APIClient:
         with self._get_client() as client:
             response = client.post(
                 f"{self.base_url}/api/v1/topics",
-                json=topic.model_dump()
+                json=topic.model_dump(mode='json')
             )
             data = self._handle_response(response)
             return TopicResponse(**data)
@@ -174,7 +174,7 @@ class APIClient:
         with self._get_client() as client:
             response = client.patch(
                 f"{self.base_url}/api/v1/topics/{topic_id}",
-                json=topic.model_dump(exclude_none=True)
+                json=topic.model_dump(mode='json', exclude_none=True)
             )
             data = self._handle_response(response)
             return TopicResponse(**data)
@@ -209,7 +209,7 @@ class APIClient:
         with self._get_client() as client:
             response = client.post(
                 f"{self.base_url}/api/v1/subscriptions",
-                json=subscription.model_dump()
+                json=subscription.model_dump(mode='json')
             )
             data = self._handle_response(response)
             return SubscriptionResponse(**data)
@@ -237,7 +237,7 @@ class APIClient:
         with self._get_client() as client:
             response = client.patch(
                 f"{self.base_url}/api/v1/subscriptions/{subscription_id}",
-                json=subscription.model_dump(exclude_none=True)
+                json=subscription.model_dump(mode='json', exclude_none=True)
             )
             data = self._handle_response(response)
             return SubscriptionResponse(**data)

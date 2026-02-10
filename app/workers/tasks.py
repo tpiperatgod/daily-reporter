@@ -276,8 +276,9 @@ def generate_digest(self, topic_id: str, window_start: str, window_end: str):
 
 
 async def _generate_digest_async(self, topic_id: str, window_start: str, window_end: str):
-    """Async implementation of generate_digest task."""
+    """Async implementation of generate_digest task with memory loop."""
     from app.db.session import get_async_session_local
+    from app.services.memory import MemoryService
 
     try:
         async with get_async_session_local()() as session:
@@ -326,15 +327,64 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 for item in items
             ]
 
-            # 3. Generate digest with LLM
+            # Initialize services
             embedding_provider = get_embedding_provider()
             llm_client = LLMClient(embedding_provider=embedding_provider)
-            digest_result = await llm_client.generate_digest(
-                topic=topic.name,
-                items=items_dict,
-                time_window_start=start_dt,
-                time_window_end=end_dt
-            )
+            memory_service = MemoryService(session, embedding_provider)
+
+            # === RECALL PHASE ===
+            # Step A: Generate search query from tweets
+            tweets_text = "\n".join([item["text"] for item in items_dict[:10]])  # Sample first 10
+            search_query_prompt = f"""Given these tweets about {topic.name}, generate a concise search query (1-2 sentences)
+that captures the core topic for retrieving relevant historical context:
+
+{tweets_text}
+
+Return only the search query, no explanation."""
+
+            try:
+                search_query = await llm_client._call_llm_simple(search_query_prompt)
+                logger.debug(f"Generated search query: {search_query}")
+            except Exception as e:
+                logger.warning(f"Failed to generate search query: {e}")
+                search_query = topic.name  # Fallback to topic name
+
+            # Step B: Retrieve relevant historical facts
+            try:
+                historical_facts = await memory_service.search_relevant_facts(
+                    topic_id=topic_id,
+                    query_text=search_query,
+                    limit=5,
+                    threshold=0.7
+                )
+                logger.info(f"Retrieved {len(historical_facts)} relevant historical facts")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve historical facts: {e}")
+                historical_facts = []
+
+            # === REASON PHASE ===
+            # Step C: Generate digest with historical context
+            new_facts = []
+            try:
+                digest_result, new_facts = await llm_client.generate_digest_with_memory(
+                    topic=topic.name,
+                    items=items_dict,
+                    time_window_start=start_dt,
+                    time_window_end=end_dt,
+                    historical_context=historical_facts
+                )
+                logger.info(f"Generated digest with {len(new_facts)} new facts")
+            except Exception as e:
+                logger.error(f"Memory-aware digest generation failed: {e}")
+                # Fallback to standard digest generation
+                logger.info("Falling back to standard digest generation")
+                digest_result = await llm_client.generate_digest(
+                    topic=topic.name,
+                    items=items_dict,
+                    time_window_start=start_dt,
+                    time_window_end=end_dt
+                )
+                new_facts = []
 
             # 4. Render markdown
             rendered_content = render_markdown_digest(
@@ -363,6 +413,29 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 }
             )
 
+            # === MEMORIZE PHASE ===
+            # Step D: Store new facts
+            if new_facts:
+                source_metadata = {
+                    "digest_id": str(digest.id),
+                    "tweet_ids": [item["id"] for item in items_dict],
+                    "time_window": {
+                        "start": start_dt.isoformat(),
+                        "end": end_dt.isoformat()
+                    }
+                }
+
+                try:
+                    stored_count = await memory_service.store_new_facts(
+                        topic_id=topic_id,
+                        facts=new_facts,
+                        source_metadata=source_metadata
+                    )
+                    logger.info(f"Stored {stored_count} new memory facts")
+                except Exception as e:
+                    logger.error(f"Failed to store memory facts: {e}", exc_info=True)
+                    # Don't fail the entire task if memory storage fails
+
             await session.commit()
             await llm_client.close()
 
@@ -373,7 +446,8 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 "status": "success",
                 "message": "Digest generated successfully",
                 "digest_id": str(digest.id),
-                "highlights": len(digest_result.highlights)
+                "highlights": len(digest_result.highlights),
+                "new_facts_stored": len(new_facts)
             }
 
     except Exception as e:
