@@ -209,7 +209,7 @@ class APIClient:
         with self._get_client() as client:
             response = client.post(
                 f"{self.base_url}/api/v1/subscriptions",
-                json=subscription.model_dump()
+                json=subscription.model_dump(mode='json')
             )
             data = self._handle_response(response)
             return SubscriptionResponse(**data)

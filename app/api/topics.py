@@ -50,7 +50,8 @@ async def create_topic(
         name=topic_data.name,
         query=topic_data.query,
         cron_expression=topic_data.cron_expression,
-        is_enabled=True
+        is_enabled=True,
+        last_tweet_id=topic_data.last_tweet_id
     )
     db.add(topic)
     await db.commit()

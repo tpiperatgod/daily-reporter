@@ -48,6 +48,7 @@ class TopicCreate(BaseModel):
     name: str = Field(..., max_length=255)
     query: str = Field(..., min_length=1)
     cron_expression: str = Field(..., max_length=100)
+    last_tweet_id: Optional[str] = Field(None, max_length=255)
 
     @validator("cron_expression")
     def validate_cron(cls, v):
