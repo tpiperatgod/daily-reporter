@@ -219,12 +219,22 @@ async def _collect_data_async(self, topic_id: str):
             # 7. Chain to generate_digest if we have new items
             if new_items:
                 logger.info("Chaining to generate_digest task")
-                # Capture end_date AFTER insertion to ensure all items are within window
-                end_date = datetime.now(UTC)
+
+                # Compute tweet-based time window from actual tweet created_at timestamps
+                tweet_window_end = max(item.created_at for item in new_items)
+                if topic.last_item_created_at:
+                    tweet_window_start = topic.last_item_created_at
+                else:
+                    tweet_window_start = min(item.created_at for item in new_items)
+
+                # Advance the watermark for the next collection cycle
+                topic.last_item_created_at = tweet_window_end
+                await session.commit()
+
                 generate_digest.delay(
                     topic_id=topic_id,
-                    window_start=start_date.isoformat(),
-                    window_end=end_date.isoformat()
+                    window_start=tweet_window_start.isoformat(),
+                    window_end=tweet_window_end.isoformat()
                 )
 
             return {
@@ -257,12 +267,13 @@ def generate_digest(self, topic_id: str, window_start: str, window_end: str):
         window_end: End of time window (ISO format string)
 
     Workflow:
-        1. Fetch items for topic in time window
-        2. Return early if no items
-        3. Call LLM to generate digest
-        4. Render markdown
-        5. Insert digest record
-        6. Chain to notify task
+        1. Load topic
+        2. Return early if digest already exists for this window (dedup)
+        3. Fetch items by tweet created_at in time window
+        4. Call LLM to generate digest
+        5. Render markdown
+        6. Insert digest record
+        7. Chain to notify task
     """
     logger.info(
         f"Generating digest for topic {topic_id}",
@@ -295,13 +306,32 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
             start_dt = datetime.fromisoformat(window_start)
             end_dt = datetime.fromisoformat(window_end)
 
-            # 2. Fetch items in time window
+            # 2. Check if a digest already exists for this exact time window (dedup)
+            existing_result = await session.execute(
+                select(Digest).where(
+                    and_(
+                        Digest.topic_id == topic_id,
+                        Digest.time_window_start == start_dt,
+                        Digest.time_window_end == end_dt
+                    )
+                )
+            )
+            existing_digest = existing_result.scalar_one_or_none()
+            if existing_digest:
+                logger.info(f"Digest already exists for this window, reusing {existing_digest.id}")
+                return {
+                    "status": "already_exists",
+                    "digest_id": str(existing_digest.id),
+                    "message": "Digest already exists for this time window"
+                }
+
+            # 3. Fetch items in time window (based on tweet created_at, not collected_at)
             items_result = await session.execute(
                 select(Item).where(
                     and_(
                         Item.topic_id == topic_id,
-                        Item.collected_at >= start_dt,
-                        Item.collected_at <= end_dt
+                        Item.created_at >= start_dt,
+                        Item.created_at <= end_dt
                     )
                 ).order_by(Item.created_at.desc())
             )
@@ -326,7 +356,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 for item in items
             ]
 
-            # 3. Generate digest with LLM
+            # 4. Generate digest with LLM
             embedding_provider = get_embedding_provider()
             llm_client = LLMClient(embedding_provider=embedding_provider)
             digest_result = await llm_client.generate_digest(
@@ -336,7 +366,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 time_window_end=end_dt
             )
 
-            # 4. Render markdown
+            # 5. Render markdown
             rendered_content = render_markdown_digest(
                 topic_name=topic.name,
                 digest_result=digest_result,
@@ -344,7 +374,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 time_window_end=end_dt
             )
 
-            # 5. Insert digest record
+            # 6. Insert digest record
             digest = Digest(
                 topic_id=topic_id,
                 time_window_start=start_dt,
@@ -366,7 +396,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
             await session.commit()
             await llm_client.close()
 
-            # 6. Chain to notify task
+            # 7. Chain to notify task
             notify.delay(str(digest.id))
 
             return {

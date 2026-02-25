@@ -38,6 +38,7 @@ class Topic(Base):
     is_enabled = Column(Boolean, default=True, nullable=False)
     last_collection_timestamp = Column(DateTime(timezone=True), nullable=True)
     last_tweet_id = Column(String(255), nullable=True, index=True)
+    last_item_created_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
@@ -100,6 +101,7 @@ class Item(Base):
     # Indexes for efficient queries
     __table_args__ = (
         Index('ix_items_topic_collected', 'topic_id', 'collected_at'),
+        Index('ix_items_topic_created', 'topic_id', 'created_at'),
         Index('ix_items_embedding_hash', 'embedding_hash'),
     )
 
