@@ -2,21 +2,19 @@
 
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, and_
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy import func
 
 from app.db.session import get_db
-from app.db.models import Digest, Delivery, Topic, Subscription, User
+from app.db.models import Digest, Delivery, Subscription
 from app.api.schemas import (
-    DigestResponse,
     DigestWithDetails,
     PaginatedResponse,
     SendDigestRequest,
     SendDigestResponse,
-    SendDigestDelivery
+    SendDigestDelivery,
 )
 from app.core.logging import get_logger
 from app.core.constants import NotificationChannel, DeliveryStatus
@@ -32,7 +30,7 @@ async def list_digests(
     limit: int = 50,
     offset: int = 0,
     topic_id: Optional[UUID] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List digests with pagination and filtering.
@@ -53,26 +51,22 @@ async def list_digests(
         query = query.where(Digest.topic_id == topic_id)
 
     # Apply pagination with eager loading
-    query = query.options(
-        selectinload(Digest.topic),
-        selectinload(Digest.deliveries)
-    ).order_by(Digest.created_at.desc())
-    
+    query = query.options(selectinload(Digest.topic), selectinload(Digest.deliveries)).order_by(
+        Digest.created_at.desc()
+    )
+
     digests, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
         items=[DigestWithDetails.from_orm(d) for d in digests],
         total=total,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
 @router.get("/{digest_id}", response_model=DigestWithDetails)
-async def get_digest(
-    digest_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_digest(digest_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Get digest by ID with details.
 
@@ -87,8 +81,10 @@ async def get_digest(
         HTTPException: If digest not found
     """
     digest = await get_entity_or_404(
-        db, Digest, digest_id,
-        eager_load=[selectinload(Digest.topic), selectinload(Digest.deliveries)]
+        db,
+        Digest,
+        digest_id,
+        eager_load=[selectinload(Digest.topic), selectinload(Digest.deliveries)],
     )
 
     return digest
@@ -100,7 +96,7 @@ async def get_digest_deliveries(
     limit: int = 50,
     offset: int = 0,
     status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get delivery records for a digest.
@@ -132,19 +128,11 @@ async def get_digest_deliveries(
     query = query.order_by(Delivery.created_at.desc())
     deliveries, total = await paginate_query(db, query, limit, offset)
 
-    return PaginatedResponse.create(
-        items=deliveries,
-        total=total,
-        limit=limit,
-        offset=offset
-    )
+    return PaginatedResponse.create(items=deliveries, total=total, limit=limit, offset=offset)
 
 
 @router.get("/{digest_id}/content")
-async def get_digest_content(
-    digest_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_digest_content(digest_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Get the rendered markdown content of a digest.
 
@@ -163,16 +151,16 @@ async def get_digest_content(
     return {
         "digest_id": str(digest.id),
         "content": digest.rendered_content,
-        "content_type": "text/markdown"
+        "content_type": "text/markdown",
     }
 
 
-@router.post("/{digest_id}/send", response_model=SendDigestResponse, status_code=status.HTTP_201_CREATED)
-async def send_digest(
-    digest_id: UUID,
-    request: SendDigestRequest,
-    db: AsyncSession = Depends(get_db)
-):
+@router.post(
+    "/{digest_id}/send",
+    response_model=SendDigestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSession = Depends(get_db)):
     """
     Manually send a digest to a specific subscription.
 
@@ -197,47 +185,31 @@ async def send_digest(
     from app.services.notifier.delivery import send_digest_to_user
 
     # 1. Load digest with topic (eager loading)
-    digest_result = await db.execute(
-        select(Digest)
-        .options(selectinload(Digest.topic))
-        .where(Digest.id == digest_id)
-    )
+    digest_result = await db.execute(select(Digest).options(selectinload(Digest.topic)).where(Digest.id == digest_id))
     digest = digest_result.scalar_one_or_none()
 
     if not digest:
         logger.warning(f"Digest not found: {digest_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Digest not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Digest not found")
 
     # 2. Load subscription with user and topic (eager loading)
     subscription_result = await db.execute(
         select(Subscription)
-        .options(
-            selectinload(Subscription.user),
-            selectinload(Subscription.topic)
-        )
+        .options(selectinload(Subscription.user), selectinload(Subscription.topic))
         .where(Subscription.id == request.subscription_id)
     )
     subscription = subscription_result.scalar_one_or_none()
 
     if not subscription:
         logger.warning(f"Subscription not found: {request.subscription_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Subscription not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
 
     # 3. Verify subscription topic matches digest topic
     if subscription.topic_id != digest.topic_id:
-        logger.warning(
-            f"Topic mismatch: subscription topic={subscription.topic_id}, "
-            f"digest topic={digest.topic_id}"
-        )
+        logger.warning(f"Topic mismatch: subscription topic={subscription.topic_id}, digest topic={digest.topic_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Subscription topic does not match digest topic"
+            detail="Subscription topic does not match digest topic",
         )
 
     # 4. Determine channels from subscription settings
@@ -250,7 +222,7 @@ async def send_digest(
     if not channels:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No channels enabled in subscription"
+            detail="No channels enabled in subscription",
         )
 
     # 5. Validate user configurations
@@ -258,7 +230,7 @@ async def send_digest(
     if NotificationChannel.FEISHU in channels and not user.feishu_webhook_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User has Feishu enabled but no webhook URL configured"
+            detail="User has Feishu enabled but no webhook URL configured",
         )
 
     # 6. Send notifications and create delivery records
@@ -268,16 +240,11 @@ async def send_digest(
             "digest_id": str(digest_id),
             "subscription_id": str(request.subscription_id),
             "user_id": str(user.id),
-            "channels": channels
-        }
+            "channels": channels,
+        },
     )
 
-    deliveries = await send_digest_to_user(
-        digest=digest,
-        user=user,
-        channels=channels,
-        session=db
-    )
+    deliveries = await send_digest_to_user(digest=digest, user=user, channels=channels, session=db)
 
     await db.commit()
 
@@ -291,8 +258,8 @@ async def send_digest(
             "digest_id": str(digest_id),
             "subscription_id": str(request.subscription_id),
             "successful": successful,
-            "failed": failed
-        }
+            "failed": failed,
+        },
     )
 
     return SendDigestResponse(
@@ -301,5 +268,5 @@ async def send_digest(
         deliveries=[SendDigestDelivery.from_orm(d) for d in deliveries],
         total_sent=len(deliveries),
         successful=successful,
-        failed=failed
+        failed=failed,
     )

@@ -1,7 +1,6 @@
-from typing import Protocol, List, Any
+from typing import Protocol, List
 from datetime import datetime
-from pydantic import BaseModel, HttpUrl
-from typing import Optional
+from pydantic import BaseModel
 
 
 class RawItem(BaseModel):
@@ -10,6 +9,7 @@ class RawItem(BaseModel):
 
     Represents a tweet/post before being stored in the database.
     """
+
     source_id: str  # Tweet ID or unique identifier from source
     author: str  # Username or display name
     text: str  # Tweet/post content
@@ -19,9 +19,7 @@ class RawItem(BaseModel):
     metrics: dict = {}  # Engagement metrics (likes, retweets, etc.)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class BaseProvider(Protocol):
@@ -32,13 +30,7 @@ class BaseProvider(Protocol):
     from external sources (Twitter/X, Mock, etc.).
     """
 
-    async def fetch(
-        self,
-        query: str,
-        start_date: datetime,
-        end_date: datetime,
-        max_items: int = 100
-    ) -> List[RawItem]:
+    async def fetch(self, query: str, start_date: datetime, end_date: datetime, max_items: int = 100) -> List[RawItem]:
         """
         Fetch items from external source matching the query.
 

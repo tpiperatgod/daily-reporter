@@ -21,9 +21,7 @@ class BaseEmbeddingProvider(Protocol):
         """
         ...
 
-    async def generate_embeddings_batch(
-        self, texts: List[str], batch_size: int
-    ) -> List[List[float]]:
+    async def generate_embeddings_batch(self, texts: List[str], batch_size: int) -> List[List[float]]:
         """
         Generate embeddings for multiple texts in batches.
 

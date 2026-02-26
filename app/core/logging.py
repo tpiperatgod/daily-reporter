@@ -28,10 +28,7 @@ def setup_logging(name: str = "app") -> logging.Logger:
     handler.setLevel(log_level)
 
     # JSON formatter
-    formatter = jsonlogger.JsonFormatter(
-        '%(asctime)s %(levelname)s %(name)s %(message)s',
-        timestamp=True
-    )
+    formatter = jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s", timestamp=True)
     handler.setFormatter(formatter)
 
     logger.addHandler(handler)

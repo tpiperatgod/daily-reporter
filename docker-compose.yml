@@ -1,6 +1,22 @@
-version: '3.8'
+x-app-common: &app-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - .env
+  environment:
+    - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest
+    - REDIS_URL=redis://redis:6379/0
+    - CELERY_BROKER_URL=redis://redis:6379/0
+    - CELERY_RESULT_BACKEND=redis://redis:6379/0
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
 
 services:
+  # ── Infrastructure (always starts) ──
   postgres:
     image: postgres:15-alpine
     container_name: x-news-postgres
@@ -9,7 +25,7 @@ services:
       POSTGRES_PASSWORD: xnews_password
       POSTGRES_DB: xnews_digest
     ports:
-      - "5433:5432"  # 使用 5433 避免端口冲突
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +33,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -28,26 +45,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: x-news-app
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+  # ── Dev profile ──
+  app-dev:
+    <<: *app-common
+    container_name: xnd-app
+    profiles: ["dev"]
     ports:
       - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       - .:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -57,47 +63,66 @@ services:
       timeout: 10s
       retries: 3
 
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: x-news-worker
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  worker-dev:
+    <<: *app-common
+    container_name: xnd-worker
+    profiles: ["dev"]
     volumes:
       - .:/app
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
 
-  beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: x-news-beat
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  beat-dev:
+    <<: *app-common
+    container_name: xnd-beat
+    profiles: ["dev"]
     volumes:
       - .:/app
     command: celery -A app.workers.celery_app beat --loglevel=info
+
+  # ── Prod profile ──
+  app-prod:
+    <<: *app-common
+    container_name: xnd-app
+    profiles: ["prod"]
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+
+  worker-prod:
+    <<: *app-common
+    container_name: xnd-worker
+    profiles: ["prod"]
+    command: celery -A app.workers.celery_app worker --loglevel=warning --concurrency=2
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+
+  beat-prod:
+    <<: *app-common
+    container_name: xnd-beat
+    profiles: ["prod"]
+    command: celery -A app.workers.celery_app beat --loglevel=warning --schedule=/tmp/celerybeat-schedule
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
 
 volumes:
   postgres_data:

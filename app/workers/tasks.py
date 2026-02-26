@@ -3,18 +3,14 @@
 import asyncio
 import inspect
 from datetime import datetime, timedelta, UTC
-from typing import List
-from celery import current_task
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.workers.celery_app import celery_app
 from app.core.logging import get_logger
-from app.db.models import Topic, Item, Digest, Delivery, Subscription, User
+from app.db.models import Topic, Item, Digest, Subscription, User
 from app.services.provider.factory import get_provider
-from app.services.provider.base import RawItem
-from app.services.llm.client import LLMClient, DigestResult
+from app.services.llm.client import LLMClient
 from app.services.embedding.factory import get_embedding_provider
 from app.services.notifier.renderer import render_markdown_digest
 
@@ -51,9 +47,7 @@ async def _collect_data_async(self, topic_id: str):
     try:
         async with get_async_session_local()() as session:
             # 1. Load topic
-            topic_result = await session.execute(
-                select(Topic).where(Topic.id == topic_id)
-            )
+            topic_result = await session.execute(select(Topic).where(Topic.id == topic_id))
             topic = topic_result.scalar_one_or_none()
 
             if not topic:
@@ -66,7 +60,7 @@ async def _collect_data_async(self, topic_id: str):
 
             logger.info(
                 f"Collecting data for topic: {topic.name}",
-                extra={"topic_id": topic_id, "query": topic.query}
+                extra={"topic_id": topic_id, "query": topic.query},
             )
 
             # 2. Calculate time window
@@ -80,10 +74,7 @@ async def _collect_data_async(self, topic_id: str):
 
             logger.info(
                 f"Time window: {start_date} to {end_date}",
-                extra={
-                    "start": start_date.isoformat(),
-                    "end": end_date.isoformat()
-                }
+                extra={"start": start_date.isoformat(), "end": end_date.isoformat()},
             )
 
             # 3. Fetch items from provider
@@ -94,14 +85,14 @@ async def _collect_data_async(self, topic_id: str):
                 "query": topic.query,
                 "start_date": start_date,
                 "end_date": end_date,
-                "max_items": 100
+                "max_items": 100,
             }
 
             # Add since_id if available and provider supports it
             if topic.last_tweet_id:
                 sig = inspect.signature(provider.fetch)
-                if 'since_id' in sig.parameters:
-                    fetch_kwargs['since_id'] = topic.last_tweet_id
+                if "since_id" in sig.parameters:
+                    fetch_kwargs["since_id"] = topic.last_tweet_id
                     logger.info(f"Using since_id: {topic.last_tweet_id}")
 
             raw_items = await provider.fetch(**fetch_kwargs)
@@ -115,7 +106,7 @@ async def _collect_data_async(self, topic_id: str):
                 return {
                     "status": "success",
                     "message": "No new items",
-                    "items_collected": 0
+                    "items_collected": 0,
                 }
 
             # 4. Process items with deduplication using batch embeddings
@@ -137,38 +128,46 @@ async def _collect_data_async(self, topic_id: str):
 
             # Batch check for existing items (fixes N+1 query problem)
             from app.db.utils import batch_check_exists
-            
+
             # Collect all source_ids and embedding_hashes
             source_ids = [raw_item.source_id for raw_item in raw_items]
             embedding_hashes_non_null = [h for h in embedding_hashes if h is not None]
-            
+
             # Batch check existing source_ids (1 query total)
             existing_source_ids = await batch_check_exists(
-                session, Item, Item.source_id, source_ids,
-                additional_filters=[Item.topic_id == topic_id]
+                session,
+                Item,
+                Item.source_id,
+                source_ids,
+                additional_filters=[Item.topic_id == topic_id],
             )
-            
+
             # Batch check existing embedding hashes (1 query total)
-            existing_hashes = await batch_check_exists(
-                session, Item, Item.embedding_hash, embedding_hashes_non_null,
-                additional_filters=[Item.topic_id == topic_id]
-            ) if embedding_hashes_non_null else set()
-            
+            existing_hashes = (
+                await batch_check_exists(
+                    session,
+                    Item,
+                    Item.embedding_hash,
+                    embedding_hashes_non_null,
+                    additional_filters=[Item.topic_id == topic_id],
+                )
+                if embedding_hashes_non_null
+                else set()
+            )
+
             # Process each item with in-memory duplicate checking
             for raw_item, embedding_hash in zip(raw_items, embedding_hashes):
                 # Check for duplicate by source_id (in-memory)
                 if raw_item.source_id in existing_source_ids:
                     duplicates += 1
                     continue
-                
+
                 # Also check by embedding_hash if available (in-memory)
                 if embedding_hash and embedding_hash in existing_hashes:
                     duplicates += 1
-                    logger.debug(
-                        f"Duplicate found via embedding hash: {raw_item.source_id}"
-                    )
+                    logger.debug(f"Duplicate found via embedding hash: {raw_item.source_id}")
                     continue
-                
+
                 # Create new item
                 item = Item(
                     topic_id=topic_id,
@@ -180,7 +179,7 @@ async def _collect_data_async(self, topic_id: str):
                     collected_at=datetime.now(UTC),
                     media_urls=raw_item.media_urls if raw_item.media_urls else None,
                     metrics=raw_item.metrics if raw_item.metrics else None,
-                    embedding_hash=embedding_hash
+                    embedding_hash=embedding_hash,
                 )
                 new_items.append(item)
 
@@ -234,14 +233,14 @@ async def _collect_data_async(self, topic_id: str):
                 generate_digest.delay(
                     topic_id=topic_id,
                     window_start=tweet_window_start.isoformat(),
-                    window_end=tweet_window_end.isoformat()
+                    window_end=tweet_window_end.isoformat(),
                 )
 
             return {
                 "status": "success",
                 "message": "Data collected successfully",
                 "items_collected": len(new_items),
-                "duplicates_skipped": duplicates
+                "duplicates_skipped": duplicates,
             }
 
     except Exception as e:
@@ -249,7 +248,7 @@ async def _collect_data_async(self, topic_id: str):
 
         # Retry with exponential backoff
         if self.request.retries < self.max_retries:
-            countdown = 2 ** self.request.retries * 60  # 60s, 120s, 240s
+            countdown = 2**self.request.retries * 60  # 60s, 120s, 240s
             logger.info(f"Retrying in {countdown} seconds...")
             raise self.retry(exc=e, countdown=countdown)
 
@@ -277,10 +276,7 @@ def generate_digest(self, topic_id: str, window_start: str, window_end: str):
     """
     logger.info(
         f"Generating digest for topic {topic_id}",
-        extra={
-            "window_start": window_start,
-            "window_end": window_end
-        }
+        extra={"window_start": window_start, "window_end": window_end},
     )
 
     return asyncio.run(_generate_digest_async(self, topic_id, window_start, window_end))
@@ -293,9 +289,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
     try:
         async with get_async_session_local()() as session:
             # 1. Load topic
-            topic_result = await session.execute(
-                select(Topic).where(Topic.id == topic_id)
-            )
+            topic_result = await session.execute(select(Topic).where(Topic.id == topic_id))
             topic = topic_result.scalar_one_or_none()
 
             if not topic:
@@ -312,7 +306,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                     and_(
                         Digest.topic_id == topic_id,
                         Digest.time_window_start == start_dt,
-                        Digest.time_window_end == end_dt
+                        Digest.time_window_end == end_dt,
                     )
                 )
             )
@@ -322,18 +316,20 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 return {
                     "status": "already_exists",
                     "digest_id": str(existing_digest.id),
-                    "message": "Digest already exists for this time window"
+                    "message": "Digest already exists for this time window",
                 }
 
             # 3. Fetch items in time window (based on tweet created_at, not collected_at)
             items_result = await session.execute(
-                select(Item).where(
+                select(Item)
+                .where(
                     and_(
                         Item.topic_id == topic_id,
                         Item.created_at >= start_dt,
-                        Item.created_at <= end_dt
+                        Item.created_at <= end_dt,
                     )
-                ).order_by(Item.created_at.desc())
+                )
+                .order_by(Item.created_at.desc())
             )
             items = items_result.scalars().all()
 
@@ -351,7 +347,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                     "author": item.author,
                     "url": item.url,
                     "created_at": item.created_at.isoformat(),
-                    "metrics": item.metrics or {}
+                    "metrics": item.metrics or {},
                 }
                 for item in items
             ]
@@ -363,7 +359,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 topic=topic.name,
                 items=items_dict,
                 time_window_start=start_dt,
-                time_window_end=end_dt
+                time_window_end=end_dt,
             )
 
             # 5. Render markdown
@@ -371,7 +367,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 topic_name=topic.name,
                 digest_result=digest_result,
                 time_window_start=start_dt,
-                time_window_end=end_dt
+                time_window_end=end_dt,
             )
 
             # 6. Insert digest record
@@ -380,7 +376,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 time_window_start=start_dt,
                 time_window_end=end_dt,
                 summary_json=digest_result.dict(),
-                rendered_content=rendered_content
+                rendered_content=rendered_content,
             )
             session.add(digest)
             await session.flush()  # Get the digest ID
@@ -389,8 +385,8 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 f"Created digest {digest.id}",
                 extra={
                     "digest_id": str(digest.id),
-                    "highlights": len(digest_result.highlights)
-                }
+                    "highlights": len(digest_result.highlights),
+                },
             )
 
             await session.commit()
@@ -403,7 +399,7 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
                 "status": "success",
                 "message": "Digest generated successfully",
                 "digest_id": str(digest.id),
-                "highlights": len(digest_result.highlights)
+                "highlights": len(digest_result.highlights),
             }
 
     except Exception as e:
@@ -448,9 +444,7 @@ async def _notify_async(self, digest_id: str):
         async with get_async_session_local()() as session:
             # 1. Load digest with topic (eager load to prevent MissingGreenlet)
             digest_result = await session.execute(
-                select(Digest)
-                .where(Digest.id == digest_id)
-                .options(selectinload(Digest.topic))
+                select(Digest).where(Digest.id == digest_id).options(selectinload(Digest.topic))
             )
             digest = digest_result.scalar_one_or_none()
 
@@ -462,29 +456,26 @@ async def _notify_async(self, digest_id: str):
 
             # 2. Query subscriptions
             subs_result = await session.execute(
-                select(Subscription, User).join(
-                    User, Subscription.user_id == User.id
-                ).where(Subscription.topic_id == topic.id)
+                select(Subscription, User)
+                .join(User, Subscription.user_id == User.id)
+                .where(Subscription.topic_id == topic.id)
             )
             subscriptions = subs_result.all()
 
             if not subscriptions:
                 logger.info(f"No subscriptions for topic {topic.name}")
-                return {
-                    "status": "success",
-                    "message": "No subscriptions to notify"
-                }
+                return {"status": "success", "message": "No subscriptions to notify"}
 
             logger.info(f"Found {len(subscriptions)} subscriptions")
 
             # 3. Send notifications using shared delivery service
             from app.services.notifier.delivery import send_digest_to_user
             from app.core.constants import NotificationChannel, DeliveryStatus
-            
+
             successful = 0
             failed = 0
             deliveries_created = 0
-            
+
             for subscription, user in subscriptions:
                 # Determine channels from subscription settings
                 channels = []
@@ -492,19 +483,14 @@ async def _notify_async(self, digest_id: str):
                     channels.append(NotificationChannel.FEISHU)
                 if subscription.enable_email:
                     channels.append(NotificationChannel.EMAIL)
-                
+
                 if not channels:
                     logger.debug(f"No channels enabled for user {user.email}")
                     continue
-                
+
                 # Use shared service to send and track deliveries
-                deliveries = await send_digest_to_user(
-                    digest=digest, 
-                    user=user, 
-                    channels=channels, 
-                    session=session
-                )
-                
+                deliveries = await send_digest_to_user(digest=digest, user=user, channels=channels, session=session)
+
                 # Aggregate results
                 for delivery in deliveries:
                     deliveries_created += 1
@@ -512,7 +498,7 @@ async def _notify_async(self, digest_id: str):
                         successful += 1
                     elif delivery.status == DeliveryStatus.FAILED:
                         failed += 1
-            
+
             await session.commit()
 
             return {
@@ -520,7 +506,7 @@ async def _notify_async(self, digest_id: str):
                 "message": "Notifications sent",
                 "deliveries": deliveries_created,
                 "successful": successful,
-                "failed": failed
+                "failed": failed,
             }
 
     except Exception as e:
@@ -535,8 +521,4 @@ async def _notify_async(self, digest_id: str):
         return {"status": "error", "message": str(e)}
 
 
-__all__ = [
-    "collect_data",
-    "generate_digest",
-    "notify"
-]
+__all__ = ["collect_data", "generate_digest", "notify"]

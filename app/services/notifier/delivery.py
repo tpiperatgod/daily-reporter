@@ -20,12 +20,7 @@ from app.services.llm.client import DigestResult
 logger = get_logger(__name__)
 
 
-async def send_digest_to_user(
-    digest: Digest,
-    user: User,
-    channels: List[str],
-    session: AsyncSession
-) -> List[Delivery]:
+async def send_digest_to_user(digest: Digest, user: User, channels: List[str], session: AsyncSession) -> List[Delivery]:
     """
     Send digest to user via specified channels and create delivery records.
 
@@ -57,7 +52,7 @@ async def send_digest_to_user(
             digest_id=str(digest.id),
             user_id=str(user.id),
             channel=channel,
-            status=DeliveryStatus.PENDING
+            status=DeliveryStatus.PENDING,
         )
         session.add(delivery)
         await session.flush()  # Get delivery ID
@@ -75,14 +70,14 @@ async def send_digest_to_user(
                     webhook_url=user.feishu_webhook_url,
                     digest_result=digest_result,
                     topic_name=digest.topic.name,
-                    webhook_secret=user.feishu_webhook_secret if hasattr(user, 'feishu_webhook_secret') else None
+                    webhook_secret=user.feishu_webhook_secret if hasattr(user, "feishu_webhook_secret") else None,
                 )
 
             elif channel == NotificationChannel.EMAIL:
                 await email_notifier.send(
                     to_email=user.email,
                     subject=f"Digest: {digest.topic.name}",
-                    content=digest.rendered_content
+                    content=digest.rendered_content,
                 )
 
             # Update delivery status
@@ -95,8 +90,8 @@ async def send_digest_to_user(
                     "channel": channel,
                     "user_id": str(user.id),
                     "delivery_id": str(delivery.id),
-                    "digest_id": str(digest.id)
-                }
+                    "digest_id": str(digest.id),
+                },
             )
 
         except Exception as e:
@@ -105,8 +100,8 @@ async def send_digest_to_user(
                 extra={
                     "channel": channel,
                     "user_id": str(user.id),
-                    "digest_id": str(digest.id)
-                }
+                    "digest_id": str(digest.id),
+                },
             )
             delivery.status = DeliveryStatus.FAILED
             delivery.error_msg = str(e)

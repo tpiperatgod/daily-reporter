@@ -33,10 +33,7 @@ def get_embedding_provider() -> BaseEmbeddingProvider:
     elif provider_type == "ollama":
         return _create_ollama_provider()
     else:
-        raise ValueError(
-            f"Unknown embedding provider: {provider_type}. "
-            f"Must be 'openai' or 'ollama'"
-        )
+        raise ValueError(f"Unknown embedding provider: {provider_type}. Must be 'openai' or 'ollama'")
 
 
 def _create_openai_provider() -> OpenAIEmbeddingProvider:
@@ -55,21 +52,13 @@ def _create_openai_provider() -> OpenAIEmbeddingProvider:
 
     # Validate required fields
     if not base_url:
-        raise ValueError(
-            "OPENAI_EMBEDDING_BASE_URL must be set when using OpenAI provider"
-        )
+        raise ValueError("OPENAI_EMBEDDING_BASE_URL must be set when using OpenAI provider")
     if not model:
-        raise ValueError(
-            "OPENAI_EMBEDDING_MODEL must be set when using OpenAI provider"
-        )
+        raise ValueError("OPENAI_EMBEDDING_MODEL must be set when using OpenAI provider")
     if not api_key:
-        raise ValueError(
-            "OPENAI_EMBEDDING_API_KEY must be set when using OpenAI provider"
-        )
+        raise ValueError("OPENAI_EMBEDDING_API_KEY must be set when using OpenAI provider")
 
-    logger.info(
-        f"Using OpenAI-compatible embedding provider ({model} at {base_url})"
-    )
+    logger.info(f"Using OpenAI-compatible embedding provider ({model} at {base_url})")
 
     return OpenAIEmbeddingProvider(
         base_url=base_url,
@@ -77,7 +66,7 @@ def _create_openai_provider() -> OpenAIEmbeddingProvider:
         api_key=api_key,
         batch_size=settings.LLM_EMBEDDING_BATCH_SIZE,
         max_retries=settings.LLM_EMBEDDING_RETRY_MAX_ATTEMPTS,
-        initial_backoff=settings.LLM_EMBEDDING_RETRY_INITIAL_BACKOFF
+        initial_backoff=settings.LLM_EMBEDDING_RETRY_INITIAL_BACKOFF,
     )
 
 
@@ -98,13 +87,9 @@ def _create_ollama_provider() -> OllamaEmbeddingProvider:
     model = settings.OLLAMA_EMBEDDING_MODEL
 
     if not base_url:
-        raise ValueError(
-            "OLLAMA_EMBEDDING_BASE_URL must be set when using Ollama provider"
-        )
+        raise ValueError("OLLAMA_EMBEDDING_BASE_URL must be set when using Ollama provider")
     if not model:
-        raise ValueError(
-            "OLLAMA_EMBEDDING_MODEL must be set when using Ollama provider"
-        )
+        raise ValueError("OLLAMA_EMBEDDING_MODEL must be set when using Ollama provider")
 
     # Validate Ollama service is reachable
     try:
@@ -113,16 +98,14 @@ def _create_ollama_provider() -> OllamaEmbeddingProvider:
         logger.error(f"Failed to validate Ollama service: {e}")
         raise
 
-    logger.info(
-        f"Using Ollama embedding provider ({model} at {base_url})"
-    )
+    logger.info(f"Using Ollama embedding provider ({model} at {base_url})")
 
     return OllamaEmbeddingProvider(
         base_url=base_url,
         model=model,
         batch_size=settings.LLM_EMBEDDING_BATCH_SIZE,
         max_retries=settings.LLM_EMBEDDING_RETRY_MAX_ATTEMPTS,
-        initial_backoff=settings.LLM_EMBEDDING_RETRY_INITIAL_BACKOFF
+        initial_backoff=settings.LLM_EMBEDDING_RETRY_INITIAL_BACKOFF,
     )
 
 
@@ -149,9 +132,7 @@ def _validate_ollama_service(base_url: str, model: str) -> None:
 
         if model not in available_models:
             logger.warning(
-                f"Model '{model}' not found in Ollama. "
-                f"Available models: {available_models}. "
-                f"Run: ollama pull {model}"
+                f"Model '{model}' not found in Ollama. Available models: {available_models}. Run: ollama pull {model}"
             )
             # Don't fail - model will be pulled on first use
         else:
@@ -160,9 +141,6 @@ def _validate_ollama_service(base_url: str, model: str) -> None:
         client.close()
 
     except httpx.ConnectError:
-        raise Exception(
-            f"Cannot connect to Ollama at {base_url}. "
-            f"Is Ollama running? Try: ollama serve"
-        )
+        raise Exception(f"Cannot connect to Ollama at {base_url}. Is Ollama running? Try: ollama serve")
     except Exception as e:
         raise Exception(f"Failed to validate Ollama service: {e}")

@@ -2,8 +2,8 @@
 
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, and_, func
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,7 +14,7 @@ from app.api.schemas import (
     SubscriptionUpdate,
     SubscriptionResponse,
     SubscriptionWithDetails,
-    PaginatedResponse
+    PaginatedResponse,
 )
 from app.core.logging import get_logger
 from app.db.utils import get_entity_or_404, paginate_query
@@ -25,10 +25,7 @@ router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
 
 @router.post("", response_model=SubscriptionResponse, status_code=status.HTTP_201_CREATED)
-async def create_subscription(
-    sub_data: SubscriptionCreate,
-    db: AsyncSession = Depends(get_db)
-):
+async def create_subscription(sub_data: SubscriptionCreate, db: AsyncSession = Depends(get_db)):
     """
     Create a new subscription.
 
@@ -42,9 +39,7 @@ async def create_subscription(
     Raises:
         HTTPException: If user/topic not found or already subscribed
     """
-    logger.info(
-        f"Creating subscription: user={sub_data.user_id}, topic={sub_data.topic_id}"
-    )
+    logger.info(f"Creating subscription: user={sub_data.user_id}, topic={sub_data.topic_id}")
 
     # Verify user and topic exist
     await get_entity_or_404(db, User, sub_data.user_id)
@@ -55,7 +50,7 @@ async def create_subscription(
         select(Subscription).where(
             and_(
                 Subscription.user_id == sub_data.user_id,
-                Subscription.topic_id == sub_data.topic_id
+                Subscription.topic_id == sub_data.topic_id,
             )
         )
     )
@@ -63,7 +58,7 @@ async def create_subscription(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Already subscribed to this topic"
+            detail="Already subscribed to this topic",
         )
 
     # Create subscription
@@ -71,7 +66,7 @@ async def create_subscription(
         user_id=sub_data.user_id,
         topic_id=sub_data.topic_id,
         enable_feishu=sub_data.enable_feishu,
-        enable_email=sub_data.enable_email
+        enable_email=sub_data.enable_email,
     )
     db.add(subscription)
     await db.commit()
@@ -87,7 +82,7 @@ async def list_subscriptions(
     offset: int = 0,
     user_id: Optional[UUID] = None,
     topic_id: Optional[UUID] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List subscriptions with pagination and filtering.
@@ -111,26 +106,22 @@ async def list_subscriptions(
         query = query.where(Subscription.topic_id == topic_id)
 
     # Apply pagination with eager loading
-    query = query.options(
-        selectinload(Subscription.user),
-        selectinload(Subscription.topic)
-    ).order_by(Subscription.created_at.desc())
-    
+    query = query.options(selectinload(Subscription.user), selectinload(Subscription.topic)).order_by(
+        Subscription.created_at.desc()
+    )
+
     subscriptions, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
         items=[SubscriptionWithDetails.from_orm(s) for s in subscriptions],
         total=total,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
 @router.get("/{subscription_id}", response_model=SubscriptionWithDetails)
-async def get_subscription(
-    subscription_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_subscription(subscription_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Get subscription by ID with details.
 
@@ -145,8 +136,10 @@ async def get_subscription(
         HTTPException: If subscription not found
     """
     subscription = await get_entity_or_404(
-        db, Subscription, subscription_id,
-        eager_load=[selectinload(Subscription.user), selectinload(Subscription.topic)]
+        db,
+        Subscription,
+        subscription_id,
+        eager_load=[selectinload(Subscription.user), selectinload(Subscription.topic)],
     )
 
     return subscription
@@ -156,7 +149,7 @@ async def get_subscription(
 async def update_subscription(
     subscription_id: UUID,
     sub_data: SubscriptionUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update subscription preferences.
@@ -188,10 +181,7 @@ async def update_subscription(
 
 
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_subscription(
-    subscription_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def delete_subscription(subscription_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Delete a subscription.
 

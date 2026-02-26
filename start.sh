@@ -83,7 +83,7 @@ echo ""
 echo "🚀 启动服务..."
 echo ""
 
-docker-compose up -d
+docker compose --profile dev up -d
 
 echo ""
 echo "⏳ 等待服务启动..."

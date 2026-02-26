@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import text
 import time
 import redis.asyncio as redis
 from app.core.config import settings
@@ -9,7 +8,6 @@ from app.core.logging import setup_logging
 from app.db.session import AsyncSessionLocal
 from app.workers.celery_app import celery_app
 from app.api.schemas import HealthResponse, ComponentHealth
-import logging
 
 # Setup logging
 logger = setup_logging("app")
@@ -18,7 +16,7 @@ logger = setup_logging("app")
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="X-News-Digest: Automated Twitter/X topic monitoring and digest service"
+    description="X-News-Digest: Automated Twitter/X topic monitoring and digest service",
 )
 
 # Configure CORS
@@ -42,39 +40,29 @@ async def check_database():
             return ComponentHealth(
                 status="healthy",
                 message="Database connection successful",
-                latency_ms=round(latency, 2)
+                latency_ms=round(latency, 2),
             )
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
-        return ComponentHealth(
-            status="unhealthy",
-            message=str(e)
-        )
+        return ComponentHealth(status="unhealthy", message=str(e))
 
 
 async def check_redis():
     """Check Redis connectivity."""
     start_time = time.time()
     try:
-        client = redis.from_url(
-            settings.REDIS_URL,
-            encoding="utf-8",
-            decode_responses=True
-        )
+        client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
         await client.ping()
         await client.close()
         latency = (time.time() - start_time) * 1000
         return ComponentHealth(
             status="healthy",
             message="Redis connection successful",
-            latency_ms=round(latency, 2)
+            latency_ms=round(latency, 2),
         )
     except Exception as e:
         logger.error(f"Redis health check failed: {e}")
-        return ComponentHealth(
-            status="unhealthy",
-            message=str(e)
-        )
+        return ComponentHealth(status="unhealthy", message=str(e))
 
 
 async def check_celery():
@@ -92,20 +80,14 @@ async def check_celery():
             return ComponentHealth(
                 status="healthy",
                 message=f"{worker_count} worker(s) available",
-                latency_ms=round(latency, 2)
+                latency_ms=round(latency, 2),
             )
         else:
             # No workers running but broker is reachable
-            return ComponentHealth(
-                status="degraded",
-                message="No workers running (broker reachable)"
-            )
+            return ComponentHealth(status="degraded", message="No workers running (broker reachable)")
     except Exception as e:
         logger.error(f"Celery health check failed: {e}")
-        return ComponentHealth(
-            status="unhealthy",
-            message=str(e)
-        )
+        return ComponentHealth(status="unhealthy", message=str(e))
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -122,11 +104,7 @@ async def health_check():
     celery_health = await check_celery()
 
     # Determine overall status
-    components = {
-        "database": db_health,
-        "redis": redis_health,
-        "celery": celery_health
-    }
+    components = {"database": db_health, "redis": redis_health, "celery": celery_health}
 
     # Overall status is healthy if all critical components are healthy
     all_healthy = all(c.status == "healthy" for c in components.values())
@@ -143,7 +121,7 @@ async def health_check():
         status=overall_status,
         app_name=settings.APP_NAME,
         version=settings.APP_VERSION,
-        components=components
+        components=components,
     )
 
 
@@ -160,36 +138,20 @@ async def root():
         "version": settings.APP_VERSION,
         "status": "running",
         "docs_url": "/docs",
-        "health_url": "/health"
+        "health_url": "/health",
     }
 
 
 # Register API routers
 from app.api import users, topics, subscriptions, digests
 
-app.include_router(
-    users.router,
-    prefix="/api/v1",
-    tags=["users"]
-)
+app.include_router(users.router, prefix="/api/v1", tags=["users"])
 
-app.include_router(
-    topics.router,
-    prefix="/api/v1",
-    tags=["topics"]
-)
+app.include_router(topics.router, prefix="/api/v1", tags=["topics"])
 
-app.include_router(
-    subscriptions.router,
-    prefix="/api/v1",
-    tags=["subscriptions"]
-)
+app.include_router(subscriptions.router, prefix="/api/v1", tags=["subscriptions"])
 
-app.include_router(
-    digests.router,
-    prefix="/api/v1",
-    tags=["digests"]
-)
+app.include_router(digests.router, prefix="/api/v1", tags=["digests"])
 
 
 @app.on_event("startup")
@@ -224,4 +186,5 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -8,7 +8,7 @@ def render_markdown_digest(
     topic_name: str,
     digest_result: DigestResult,
     time_window_start: datetime,
-    time_window_end: datetime
+    time_window_end: datetime,
 ) -> str:
     """
     Render a digest as formatted Markdown.

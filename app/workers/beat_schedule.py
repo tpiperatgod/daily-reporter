@@ -28,9 +28,7 @@ async def get_enabled_topics_from_db():
     AsyncSessionLocal = get_async_session_local()
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(Topic).where(Topic.is_enabled == True)
-        )
+        result = await session.execute(select(Topic).where(Topic.is_enabled == True))
         topics = result.scalars().all()
 
         # Convert to list of dicts
@@ -39,7 +37,7 @@ async def get_enabled_topics_from_db():
                 "id": str(topic.id),
                 "name": topic.name,
                 "cron_expression": topic.cron_expression,
-                "query": topic.query
+                "query": topic.query,
             }
             for topic in topics
         ]
@@ -65,10 +63,7 @@ def parse_cron_expression(cron_str: str, timezone_str: str = None) -> crontab:
 
     parts = cron_str.strip().split()
     if len(parts) != 5:
-        raise ValueError(
-            f"Invalid cron expression: {cron_str}. "
-            "Expected format: 'minute hour day month weekday'"
-        )
+        raise ValueError(f"Invalid cron expression: {cron_str}. Expected format: 'minute hour day month weekday'")
 
     minute, hour, day, month, day_of_week = parts
 
@@ -85,12 +80,12 @@ def parse_cron_expression(cron_str: str, timezone_str: str = None) -> crontab:
         hour=hour,
         day_of_month=day,
         month_of_year=month,
-        day_of_week=day_of_week
+        day_of_week=day_of_week,
     )
-    
+
     # Override timezone attribute
     schedule.tz = tz
-    
+
     return schedule
 
 
@@ -114,13 +109,10 @@ async def update_beat_schedule():
         for topic in topics:
             try:
                 # Parse cron expression with timezone
-                cron_schedule = parse_cron_expression(
-                    topic["cron_expression"],
-                    timezone_str=settings.CRON_TIMEZONE
-                )
+                cron_schedule = parse_cron_expression(topic["cron_expression"], timezone_str=settings.CRON_TIMEZONE)
 
                 # Add to schedule
-                task_name = f'collect_data_{topic["id"]}'
+                task_name = f"collect_data_{topic['id']}"
                 schedule[task_name] = {
                     "task": "app.workers.tasks.collect_data",
                     "schedule": cron_schedule,
@@ -132,8 +124,8 @@ async def update_beat_schedule():
                     extra={
                         "topic_id": topic["id"],
                         "cron": topic["cron_expression"],
-                        "timezone": settings.CRON_TIMEZONE
-                    }
+                        "timezone": settings.CRON_TIMEZONE,
+                    },
                 )
 
             except Exception as e:
@@ -142,8 +134,8 @@ async def update_beat_schedule():
                     extra={
                         "topic_id": topic["id"],
                         "cron_expression": topic["cron_expression"],
-                        "error": str(e)
-                    }
+                        "error": str(e),
+                    },
                 )
                 continue
 
@@ -152,7 +144,7 @@ async def update_beat_schedule():
 
         logger.info(
             f"Beat schedule updated with {len(schedule)} tasks",
-            extra={"num_tasks": len(schedule)}
+            extra={"num_tasks": len(schedule)},
         )
 
         return schedule
@@ -170,6 +162,7 @@ def update_beat_schedule_sync():
     This can be called from Celery Beat's initialization.
     """
     import asyncio
+
     return asyncio.run(update_beat_schedule())
 
 
@@ -179,13 +172,10 @@ try:
     initial_schedule = update_beat_schedule_sync()
     logger.info(
         f"Successfully loaded {len(initial_schedule)} tasks from database at startup",
-        extra={"task_names": list(initial_schedule.keys())}
+        extra={"task_names": list(initial_schedule.keys())},
     )
 except Exception as e:
-    logger.error(
-        f"Failed to load initial beat schedule: {e}",
-        exc_info=True
-    )
+    logger.error(f"Failed to load initial beat schedule: {e}", exc_info=True)
     # Set empty schedule and log error
     celery_app.conf.beat_schedule = {}
 
@@ -194,8 +184,8 @@ logger.info(
     "Beat schedule initialization complete",
     extra={
         "num_tasks": len(celery_app.conf.beat_schedule),
-        "task_names": list(celery_app.conf.beat_schedule.keys())
-    }
+        "task_names": list(celery_app.conf.beat_schedule.keys()),
+    },
 )
 
 

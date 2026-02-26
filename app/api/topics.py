@@ -2,7 +2,7 @@
 
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +14,7 @@ from app.api.schemas import (
     TopicResponse,
     TopicWithStats,
     PaginatedResponse,
-    TriggerResponse
+    TriggerResponse,
 )
 from app.core.logging import get_logger
 from app.db.utils import get_entity_or_404, paginate_query
@@ -26,10 +26,7 @@ router = APIRouter(prefix="/topics", tags=["topics"])
 
 
 @router.post("", response_model=TopicResponse, status_code=status.HTTP_201_CREATED)
-async def create_topic(
-    topic_data: TopicCreate,
-    db: AsyncSession = Depends(get_db)
-):
+async def create_topic(topic_data: TopicCreate, db: AsyncSession = Depends(get_db)):
     """
     Create a new topic.
 
@@ -51,7 +48,7 @@ async def create_topic(
         query=topic_data.query,
         cron_expression=topic_data.cron_expression,
         is_enabled=True,
-        last_tweet_id=topic_data.last_tweet_id
+        last_tweet_id=topic_data.last_tweet_id,
     )
     db.add(topic)
     await db.commit()
@@ -67,7 +64,7 @@ async def list_topics(
     offset: int = 0,
     is_enabled: Optional[bool] = None,
     search: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List all topics with pagination and filtering.
@@ -89,10 +86,7 @@ async def list_topics(
         query = query.where(Topic.is_enabled == is_enabled)
 
     if search:
-        query = query.where(
-            (Topic.name.ilike(f"%{search}%")) |
-            (Topic.query.ilike(f"%{search}%"))
-        )
+        query = query.where((Topic.name.ilike(f"%{search}%")) | (Topic.query.ilike(f"%{search}%")))
 
     # Apply pagination
     query = query.order_by(Topic.created_at.desc())
@@ -102,15 +96,12 @@ async def list_topics(
         items=[TopicResponse.from_orm(t) for t in topics],
         total=total,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
 @router.get("/{topic_id}", response_model=TopicWithStats)
-async def get_topic(
-    topic_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_topic(topic_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Get topic by ID with statistics.
 
@@ -128,21 +119,15 @@ async def get_topic(
 
     # Get statistics
     # Count items
-    items_count = await db.execute(
-        select(func.count(Item.id)).where(Item.topic_id == topic_id)
-    )
+    items_count = await db.execute(select(func.count(Item.id)).where(Item.topic_id == topic_id))
     total_items = items_count.scalar() or 0
 
     # Count digests
-    digests_count = await db.execute(
-        select(func.count(Digest.id)).where(Digest.topic_id == topic_id)
-    )
+    digests_count = await db.execute(select(func.count(Digest.id)).where(Digest.topic_id == topic_id))
     total_digests = digests_count.scalar() or 0
 
     # Count subscriptions
-    subs_count = await db.execute(
-        select(func.count(Subscription.id)).where(Subscription.topic_id == topic_id)
-    )
+    subs_count = await db.execute(select(func.count(Subscription.id)).where(Subscription.topic_id == topic_id))
     total_subscriptions = subs_count.scalar() or 0
 
     # Build response
@@ -155,11 +140,7 @@ async def get_topic(
 
 
 @router.patch("/{topic_id}", response_model=TopicResponse)
-async def update_topic(
-    topic_id: UUID,
-    topic_data: TopicUpdate,
-    db: AsyncSession = Depends(get_db)
-):
+async def update_topic(topic_id: UUID, topic_data: TopicUpdate, db: AsyncSession = Depends(get_db)):
     """
     Update topic information.
 
@@ -194,10 +175,7 @@ async def update_topic(
 
 
 @router.delete("/{topic_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_topic(
-    topic_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def delete_topic(topic_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Delete a topic.
 
@@ -217,10 +195,7 @@ async def delete_topic(
 
 
 @router.post("/{topic_id}/trigger", response_model=TriggerResponse)
-async def trigger_topic_collection(
-    topic_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def trigger_topic_collection(topic_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Manually trigger data collection for a topic.
 
@@ -239,23 +214,20 @@ async def trigger_topic_collection(
     if not topic.is_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Topic is disabled. Enable it first."
+            detail="Topic is disabled. Enable it first.",
         )
 
     # Trigger Celery task
-    task = celery_app.send_task(
-        "app.workers.tasks.collect_data",
-        args=[str(topic_id)]
-    )
+    task = celery_app.send_task("app.workers.tasks.collect_data", args=[str(topic_id)])
 
     logger.info(
         f"Manually triggered collection for topic {topic_id}",
-        extra={"task_id": task.id}
+        extra={"task_id": task.id},
     )
 
     return TriggerResponse(
         status="success",
         message="Data collection task triggered",
         task_id=task.id,
-        topic_id=str(topic_id)
+        topic_id=str(topic_id),
     )

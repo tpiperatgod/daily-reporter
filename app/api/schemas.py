@@ -10,21 +10,30 @@ from pydantic import BaseModel, EmailStr, Field, validator
 # User Schemas
 # ============================================================================
 
+
 class UserCreate(BaseModel):
     """Schema for creating a user."""
+
     name: Optional[str] = Field(None, max_length=255)
     email: EmailStr
     feishu_webhook_url: Optional[str] = Field(None, max_length=2048)
-    feishu_webhook_secret: Optional[str] = Field(None, max_length=255, description="HMAC secret for Feishu webhook signature verification")
+    feishu_webhook_secret: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="HMAC secret for Feishu webhook signature verification",
+    )
 
 
 class UserResponse(BaseModel):
     """Schema for user response."""
+
     id: UUID
     name: Optional[str]
     email: str
     feishu_webhook_url: Optional[str]
-    feishu_webhook_secret: Optional[str] = Field(None, description="HMAC secret for Feishu webhook (masked for security)")
+    feishu_webhook_secret: Optional[str] = Field(
+        None, description="HMAC secret for Feishu webhook (masked for security)"
+    )
     created_at: datetime
 
     class Config:
@@ -33,6 +42,7 @@ class UserResponse(BaseModel):
 
 class UserWithSubscriptions(UserResponse):
     """Schema for user with subscription details."""
+
     subscriptions: List["SubscriptionWithTopic"] = []
 
     class Config:
@@ -43,8 +53,10 @@ class UserWithSubscriptions(UserResponse):
 # Topic Schemas
 # ============================================================================
 
+
 class TopicCreate(BaseModel):
     """Schema for creating a topic."""
+
     name: str = Field(..., max_length=255)
     query: str = Field(..., min_length=1)
     cron_expression: str = Field(..., max_length=100)
@@ -55,14 +67,13 @@ class TopicCreate(BaseModel):
         """Validate cron expression format."""
         parts = v.strip().split()
         if len(parts) != 5:
-            raise ValueError(
-                "Invalid cron expression. Expected format: 'minute hour day month weekday'"
-            )
+            raise ValueError("Invalid cron expression. Expected format: 'minute hour day month weekday'")
         return v
 
 
 class TopicUpdate(BaseModel):
     """Schema for updating a topic."""
+
     name: Optional[str] = Field(None, max_length=255)
     query: Optional[str] = Field(None, min_length=1)
     cron_expression: Optional[str] = Field(None, max_length=100)
@@ -74,14 +85,13 @@ class TopicUpdate(BaseModel):
         if v is not None:
             parts = v.strip().split()
             if len(parts) != 5:
-                raise ValueError(
-                    "Invalid cron expression. Expected format: 'minute hour day month weekday'"
-                )
+                raise ValueError("Invalid cron expression. Expected format: 'minute hour day month weekday'")
         return v
 
 
 class TopicResponse(BaseModel):
     """Schema for topic response."""
+
     id: UUID
     name: str
     query: str
@@ -97,6 +107,7 @@ class TopicResponse(BaseModel):
 
 class TopicWithStats(TopicResponse):
     """Schema for topic with statistics."""
+
     total_items: int = 0
     total_digests: int = 0
     total_subscriptions: int = 0
@@ -106,8 +117,10 @@ class TopicWithStats(TopicResponse):
 # Subscription Schemas
 # ============================================================================
 
+
 class SubscriptionCreate(BaseModel):
     """Schema for creating a subscription."""
+
     user_id: UUID
     topic_id: UUID
     enable_feishu: bool = True
@@ -116,12 +129,14 @@ class SubscriptionCreate(BaseModel):
 
 class SubscriptionUpdate(BaseModel):
     """Schema for updating a subscription."""
+
     enable_feishu: Optional[bool] = None
     enable_email: Optional[bool] = None
 
 
 class SubscriptionResponse(BaseModel):
     """Schema for subscription response."""
+
     id: UUID
     user_id: UUID
     topic_id: UUID
@@ -135,6 +150,7 @@ class SubscriptionResponse(BaseModel):
 
 class SubscriptionWithTopic(SubscriptionResponse):
     """Schema for subscription with topic details (used in user listings)."""
+
     topic: Optional[TopicResponse] = None
 
     class Config:
@@ -143,6 +159,7 @@ class SubscriptionWithTopic(SubscriptionResponse):
 
 class SubscriptionWithDetails(SubscriptionResponse):
     """Schema for subscription with user and topic details."""
+
     user: UserResponse
     topic: TopicResponse
 
@@ -154,8 +171,10 @@ class SubscriptionWithDetails(SubscriptionResponse):
 # Item Schemas
 # ============================================================================
 
+
 class ItemResponse(BaseModel):
     """Schema for item response."""
+
     id: UUID
     topic_id: UUID
     source_id: str
@@ -175,8 +194,10 @@ class ItemResponse(BaseModel):
 # Digest Schemas
 # ============================================================================
 
+
 class DigestStatsResponse(BaseModel):
     """Schema for digest statistics."""
+
     total_posts_analyzed: int
     unique_authors: int
     total_engagement: int
@@ -185,6 +206,7 @@ class DigestStatsResponse(BaseModel):
 
 class DigestHighlight(BaseModel):
     """Schema for digest highlight."""
+
     title: str
     summary: str
     representative_urls: List[str]
@@ -193,6 +215,7 @@ class DigestHighlight(BaseModel):
 
 class DigestSummary(BaseModel):
     """Schema for digest summary (from LLM)."""
+
     headline: str
     highlights: List[DigestHighlight]
     themes: List[str]
@@ -202,6 +225,7 @@ class DigestSummary(BaseModel):
 
 class DigestResponse(BaseModel):
     """Schema for digest response."""
+
     id: UUID
     topic_id: UUID
     time_window_start: datetime
@@ -216,6 +240,7 @@ class DigestResponse(BaseModel):
 
 class DigestWithDetails(DigestResponse):
     """Schema for digest with topic and delivery details."""
+
     topic: TopicResponse
     deliveries: List["DeliveryResponse"] = []
 
@@ -224,8 +249,10 @@ class DigestWithDetails(DigestResponse):
 # Delivery Schemas
 # ============================================================================
 
+
 class DeliveryResponse(BaseModel):
     """Schema for delivery response."""
+
     id: UUID
     digest_id: UUID
     user_id: UUID
@@ -244,13 +271,16 @@ class DeliveryResponse(BaseModel):
 # Send Digest Schemas
 # ============================================================================
 
+
 class SendDigestRequest(BaseModel):
     """Schema for manually sending digest to a subscription."""
+
     subscription_id: UUID
 
 
 class SendDigestDelivery(BaseModel):
     """Schema for delivery info in send digest response."""
+
     id: UUID
     channel: str
     status: str
@@ -263,6 +293,7 @@ class SendDigestDelivery(BaseModel):
 
 class SendDigestResponse(BaseModel):
     """Schema for send digest response."""
+
     digest_id: UUID
     subscription_id: UUID
     deliveries: List[SendDigestDelivery]
@@ -275,8 +306,10 @@ class SendDigestResponse(BaseModel):
 # Trigger Response Schemas
 # ============================================================================
 
+
 class TriggerResponse(BaseModel):
     """Schema for manual trigger response."""
+
     status: str
     message: str
     task_id: Optional[str] = None
@@ -287,8 +320,10 @@ class TriggerResponse(BaseModel):
 # Health Check Schemas
 # ============================================================================
 
+
 class ComponentHealth(BaseModel):
     """Schema for component health status."""
+
     status: str
     message: Optional[str] = None
     latency_ms: Optional[float] = None
@@ -296,6 +331,7 @@ class ComponentHealth(BaseModel):
 
 class HealthResponse(BaseModel):
     """Schema for health check response."""
+
     status: str
     app_name: str
     version: str
@@ -306,8 +342,10 @@ class HealthResponse(BaseModel):
 # List Response Wrapper
 # ============================================================================
 
+
 class PaginatedResponse(BaseModel):
     """Schema for paginated list response."""
+
     items: List
     total: int
     limit: int
@@ -318,13 +356,7 @@ class PaginatedResponse(BaseModel):
     def create(cls, items: List, total: int, limit: int, offset: int):
         """Create paginated response."""
         has_more = offset + limit < total
-        return cls(
-            items=items,
-            total=total,
-            limit=limit,
-            offset=offset,
-            has_more=has_more
-        )
+        return cls(items=items, total=total, limit=limit, offset=offset, has_more=has_more)
 
 
 # ============================================================================

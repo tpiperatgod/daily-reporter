@@ -1,6 +1,5 @@
 """Ollama embedding provider for local models."""
 
-import asyncio
 from typing import List
 import httpx
 from app.core.logging import get_logger
@@ -22,7 +21,7 @@ class OllamaEmbeddingProvider:
         model: str,
         batch_size: int = 64,
         max_retries: int = 3,
-        initial_backoff: float = 1.0
+        initial_backoff: float = 1.0,
     ):
         """
         Initialize Ollama embedding provider.
@@ -34,7 +33,7 @@ class OllamaEmbeddingProvider:
             max_retries: Maximum retry attempts (default: 3)
             initial_backoff: Initial backoff in seconds (default: 1.0)
         """
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.model = model
         self.batch_size = batch_size
         self.max_retries = max_retries
@@ -42,16 +41,16 @@ class OllamaEmbeddingProvider:
 
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0),  # Longer timeout for local inference
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         logger.info(
-            f"Initialized Ollama embedding provider",
+            "Initialized Ollama embedding provider",
             extra={
                 "base_url": self.base_url,
                 "model": self.model,
-                "batch_size": self.batch_size
-            }
+                "batch_size": self.batch_size,
+            },
         )
 
     async def generate_embedding(self, text: str) -> List[float]:
@@ -72,8 +71,8 @@ class OllamaEmbeddingProvider:
                 f"{self.base_url}/api/embed",
                 json={
                     "model": self.model,
-                    "input": text[:1000]  # Truncate very long text
-                }
+                    "input": text[:1000],  # Truncate very long text
+                },
                 # No Authorization header for local Ollama
             )
 
@@ -89,17 +88,11 @@ class OllamaEmbeddingProvider:
             return embedding
 
         except httpx.ConnectError:
-            logger.error(
-                f"Cannot connect to Ollama at {self.base_url}. "
-                f"Is Ollama running? Try: ollama serve"
-            )
+            logger.error(f"Cannot connect to Ollama at {self.base_url}. Is Ollama running? Try: ollama serve")
             raise
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                logger.error(
-                    f"Model '{self.model}' not found. "
-                    f"Pull the model: ollama pull {self.model}"
-                )
+                logger.error(f"Model '{self.model}' not found. Pull the model: ollama pull {self.model}")
             else:
                 logger.error(f"HTTP error {e.response.status_code}: {e}")
             raise
@@ -110,9 +103,7 @@ class OllamaEmbeddingProvider:
             logger.error(f"Failed to generate embedding: {e}")
             raise
 
-    async def generate_embeddings_batch(
-        self, texts: List[str], batch_size: int = None
-    ) -> List[List[float]]:
+    async def generate_embeddings_batch(self, texts: List[str], batch_size: int = None) -> List[List[float]]:
         """
         Generate embeddings for multiple texts in batches.
 
@@ -135,36 +126,29 @@ class OllamaEmbeddingProvider:
         total_batches = (len(texts) + batch_size - 1) // batch_size
 
         logger.info(
-            f"Starting batch embedding generation",
+            "Starting batch embedding generation",
             extra={
                 "total_texts": len(texts),
                 "batch_size": batch_size,
                 "total_batches": total_batches,
-                "provider": "ollama"
-            }
+                "provider": "ollama",
+            },
         )
 
         start_time = time.time()
 
         # Process in chunks
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+            batch = texts[i : i + batch_size]
             batch_num = (i // batch_size) + 1
 
-            logger.info(
-                f"Processing batch {batch_num}/{total_batches} ({len(batch)} items)"
-            )
+            logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} items)")
 
             # Truncate long texts
             truncated_batch = [text[:1000] for text in batch]
 
             # Make API call with retry
-            data = await self._api_call_with_retry(
-                json_data={
-                    "model": self.model,
-                    "input": truncated_batch
-                }
-            )
+            data = await self._api_call_with_retry(json_data={"model": self.model, "input": truncated_batch})
 
             # Extract embeddings in order
             # Ollama returns: {"embeddings": [[...], [...], ...]}
@@ -173,7 +157,7 @@ class OllamaEmbeddingProvider:
 
             logger.debug(
                 f"Batch {batch_num}/{total_batches} completed",
-                extra={"embeddings_count": len(embeddings)}
+                extra={"embeddings_count": len(embeddings)},
             )
 
         duration = time.time() - start_time
@@ -183,8 +167,8 @@ class OllamaEmbeddingProvider:
             extra={
                 "total_embeddings": len(all_embeddings),
                 "provider": "ollama",
-                "duration_seconds": duration
-            }
+                "duration_seconds": duration,
+            },
         )
 
         return all_embeddings
@@ -203,18 +187,15 @@ class OllamaEmbeddingProvider:
             Exception: If all retries exhausted or non-retryable error
         """
         from app.core.http_utils import api_call_with_retry
-        
+
         def handle_ollama_errors(error: httpx.HTTPStatusError, attempt: int):
             """Custom error handling for Ollama API."""
             if error.response.status_code == 404:
-                logger.error(
-                    f"Model '{self.model}' not found. "
-                    f"Pull the model: ollama pull {self.model}"
-                )
+                logger.error(f"Model '{self.model}' not found. Pull the model: ollama pull {self.model}")
                 raise
             # Return None to continue retry for other errors
             return None
-        
+
         try:
             return await api_call_with_retry(
                 client=self.client,
@@ -224,13 +205,10 @@ class OllamaEmbeddingProvider:
                 max_retries=self.max_retries,
                 initial_backoff=self.initial_backoff,
                 retryable_status_codes=set(),  # No rate limits for local Ollama
-                error_handler=handle_ollama_errors
+                error_handler=handle_ollama_errors,
             )
-        except httpx.ConnectError as e:
-            logger.error(
-                f"Cannot connect to Ollama at {self.base_url}. "
-                f"Is Ollama running? Try: ollama serve"
-            )
+        except httpx.ConnectError:
+            logger.error(f"Cannot connect to Ollama at {self.base_url}. Is Ollama running? Try: ollama serve")
             raise
 
     async def close(self):

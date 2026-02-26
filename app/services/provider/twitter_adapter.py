@@ -4,6 +4,7 @@ Twitter API adapter for fetching tweets using twitterapi.io advanced search.
 This adapter provides incremental tweet collection using the since_id parameter,
 enabling efficient and cost-effective data gathering.
 """
+
 import re
 import httpx
 import logging
@@ -44,7 +45,7 @@ class TwitterAPIAdapter(BaseProvider):
         start_date: datetime,
         end_date: datetime,
         max_items: int = 100,
-        since_id: Optional[str] = None
+        since_id: Optional[str] = None,
     ) -> List[RawItem]:
         """
         Fetch tweets from Twitter API.
@@ -97,16 +98,16 @@ class TwitterAPIAdapter(BaseProvider):
         query = query.strip()
 
         # Handle "from:username" format
-        from_match = re.search(r'from:(\w+)', query, re.IGNORECASE)
+        from_match = re.search(r"from:(\w+)", query, re.IGNORECASE)
         if from_match:
             return from_match.group(1)
 
         # Handle "@username" or "username" format
-        username_match = re.search(r'@?(\w+)', query)
+        username_match = re.search(r"@?(\w+)", query)
         if username_match:
             username = username_match.group(1)
             # Validate username (Twitter usernames are alphanumeric + underscore)
-            if re.match(r'^[A-Za-z0-9_]{1,15}$', username):
+            if re.match(r"^[A-Za-z0-9_]{1,15}$", username):
                 return username
 
         raise ValueError(f"Could not extract valid username from query: {query}")
@@ -127,11 +128,7 @@ class TwitterAPIAdapter(BaseProvider):
             query += f" since_id:{since_id}"
         return query
 
-    async def _fetch_page(
-        self,
-        query: str,
-        cursor: Optional[str] = None
-    ) -> dict:
+    async def _fetch_page(self, query: str, cursor: Optional[str] = None) -> dict:
         """
         Fetch a single page from Twitter API.
 
@@ -147,14 +144,8 @@ class TwitterAPIAdapter(BaseProvider):
             httpx.HTTPStatusError: If API request fails
         """
         url = f"{self.base_url}/twitter/tweet/advanced_search"
-        headers = {
-            "X-API-Key": self.api_key,
-            "Accept": "application/json"
-        }
-        params = {
-            "query": query,
-            "queryType": "Latest"
-        }
+        headers = {"X-API-Key": self.api_key, "Accept": "application/json"}
+        params = {"query": query, "queryType": "Latest"}
         if cursor:
             params["cursor"] = cursor
 
@@ -173,11 +164,7 @@ class TwitterAPIAdapter(BaseProvider):
                     logger.error(f"Twitter API error: {e.response.status_code} - {e.response.text}")
                     raise
 
-    async def _fetch_all_pages(
-        self,
-        query: str,
-        max_items: int
-    ) -> List[RawItem]:
+    async def _fetch_all_pages(self, query: str, max_items: int) -> List[RawItem]:
         """
         Fetch multiple pages from Twitter API.
 
@@ -258,7 +245,7 @@ class TwitterAPIAdapter(BaseProvider):
             url=url,
             created_at=created_at,
             media_urls=media_urls,
-            metrics=metrics
+            metrics=metrics,
         )
 
     def _extract_media_urls(self, tweet: dict) -> List[str]:
@@ -296,7 +283,7 @@ class TwitterAPIAdapter(BaseProvider):
             "retweets": tweet.get("retweetCount", 0),
             "replies": tweet.get("replyCount", 0),
             "quotes": tweet.get("quoteCount", 0),
-            "views": tweet.get("viewCount", 0)
+            "views": tweet.get("viewCount", 0),
         }
 
     def _parse_timestamp(self, timestamp_str: str) -> datetime:

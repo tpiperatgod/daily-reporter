@@ -1,6 +1,5 @@
 """User management API endpoints."""
 
-from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, or_
@@ -13,8 +12,7 @@ from app.api.schemas import (
     UserCreate,
     UserResponse,
     UserWithSubscriptions,
-    SubscriptionResponse,
-    PaginatedResponse
+    PaginatedResponse,
 )
 from app.core.logging import get_logger
 from app.db.utils import get_entity_or_404, paginate_query
@@ -25,10 +23,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(
-    user_data: UserCreate,
-    db: AsyncSession = Depends(get_db)
-):
+async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """
     Create a new user.
 
@@ -45,22 +40,17 @@ async def create_user(
     logger.info(f"Creating user with email: {user_data.email}")
 
     # Check if email already exists
-    existing = await db.execute(
-        select(User).where(User.email == user_data.email)
-    )
+    existing = await db.execute(select(User).where(User.email == user_data.email))
     if existing.scalar_one_or_none():
         logger.warning(f"Email already exists: {user_data.email}")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered"
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     # Create user
     user = User(
         name=user_data.name,
         email=user_data.email,
         feishu_webhook_url=user_data.feishu_webhook_url,
-        feishu_webhook_secret=user_data.feishu_webhook_secret
+        feishu_webhook_secret=user_data.feishu_webhook_secret,
     )
     db.add(user)
     await db.commit()
@@ -75,7 +65,7 @@ async def list_users(
     limit: int = 50,
     offset: int = 0,
     search: str = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List all users with pagination.
@@ -89,18 +79,11 @@ async def list_users(
     Returns:
         Paginated list of users with subscriptions
     """
-    query = select(User).options(
-        selectinload(User.subscriptions).selectinload(Subscription.topic)
-    )
+    query = select(User).options(selectinload(User.subscriptions).selectinload(Subscription.topic))
 
     # Apply search filter
     if search:
-        query = query.where(
-            or_(
-                User.name.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%")
-            )
-        )
+        query = query.where(or_(User.name.ilike(f"%{search}%"), User.email.ilike(f"%{search}%")))
 
     # Apply pagination
     query = query.order_by(User.created_at.desc())
@@ -110,15 +93,12 @@ async def list_users(
         items=[UserWithSubscriptions.from_orm(u) for u in users],
         total=total,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
 @router.get("/{user_id}", response_model=UserWithSubscriptions)
-async def get_user(
-    user_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Get user by ID with subscriptions.
 
@@ -136,18 +116,14 @@ async def get_user(
         db,
         User,
         user_id,
-        eager_load=[selectinload(User.subscriptions).selectinload(Subscription.topic)]
+        eager_load=[selectinload(User.subscriptions).selectinload(Subscription.topic)],
     )
 
     return user
 
 
 @router.patch("/{user_id}", response_model=UserResponse)
-async def update_user(
-    user_id: UUID,
-    user_data: UserCreate,
-    db: AsyncSession = Depends(get_db)
-):
+async def update_user(user_id: UUID, user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """
     Update user information.
 
@@ -166,14 +142,9 @@ async def update_user(
 
     # Check email uniqueness if changing
     if user_data.email != user.email:
-        existing = await db.execute(
-            select(User).where(User.email == user_data.email)
-        )
+        existing = await db.execute(select(User).where(User.email == user_data.email))
         if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered"
-            )
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
         user.email = user_data.email
 
     # Update fields

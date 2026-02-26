@@ -5,7 +5,6 @@ sending actual emails.
 """
 
 import aiosmtplib
-from email.message import EmailMessage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from app.core.config import settings
@@ -45,13 +44,13 @@ class EmailNotifier:
         if self.log_only:
             # Development mode: log instead of sending
             logger.info(
-                f"[Email - LOG MODE] Would send email",
+                "[Email - LOG MODE] Would send email",
                 extra={
                     "to": to_email,
                     "subject": subject,
                     "content_length": len(content),
-                    "content_preview": content[:300] + "..." if len(content) > 300 else content
-                }
+                    "content_preview": content[:300] + "..." if len(content) > 300 else content,
+                },
             )
             return
 
@@ -82,16 +81,10 @@ class EmailNotifier:
                 username=settings.SMTP_USER,
                 password=settings.SMTP_PASSWORD,
                 use_tls=True,
-                start_tls=False
+                start_tls=False,
             )
 
-            logger.info(
-                f"Email sent successfully",
-                extra={
-                    "to": to_email,
-                    "subject": subject
-                }
-            )
+            logger.info("Email sent successfully", extra={"to": to_email, "subject": subject})
 
         except Exception as e:
             logger.error(f"Failed to send email: {e}")

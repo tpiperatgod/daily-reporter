@@ -67,7 +67,7 @@ def build_digest_prompt(
     time_window_start: datetime,
     time_window_end: datetime,
     posts: list[dict],
-    total_items: int
+    total_items: int,
 ) -> str:
     """
     Build the digest generation prompt.
@@ -87,10 +87,10 @@ def build_digest_prompt(
     for i, post in enumerate(posts, 1):
         post_text = f"""
 Post {i}:
-Author: {post.get('author', 'Unknown')}
-Text: {post.get('text', '')}
-URL: {post.get('url', 'N/A')}
-Engagement: {post.get('engagement_score', 0)}
+Author: {post.get("author", "Unknown")}
+Text: {post.get("text", "")}
+URL: {post.get("url", "N/A")}
+Engagement: {post.get("engagement_score", 0)}
 """
         formatted_posts.append(post_text)
 
@@ -101,5 +101,5 @@ Engagement: {post.get('engagement_score', 0)}
         time_window_start=time_window_start.strftime("%Y-%m-%d %H:%M"),
         time_window_end=time_window_end.strftime("%Y-%m-%d %H:%M"),
         total_items=total_items,
-        posts=posts_section
+        posts=posts_section,
     )
