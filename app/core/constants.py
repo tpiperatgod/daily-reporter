@@ -27,7 +27,6 @@ class HTTPTimeouts:
 
     EMBEDDING_API = 30
     TWITTER_API = 30
-    APIFY_ACTOR = 300
     DEFAULT = 30
 
 

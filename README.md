@@ -4,7 +4,7 @@
 
 ## ✨ 核心功能
 
-- 🐦 **Twitter 数据收集**：支持 Twitter API、Apify、Mock 三种数据源
+- 🐦 **Twitter 数据收集**：支持 Twitter API、Mock 两种数据源
 - 🔄 **增量采集**：使用 `since_id` 机制，仅获取新推文（节省 90%+ API 调用）
 - 🤖 **AI 摘要**：集成 DeepSeek/OpenAI LLM 生成智能摘要
 - 📅 **定时任务**：基于 Cron 表达式的自动化采集
@@ -171,7 +171,6 @@ curl -X POST http://localhost:8000/api/v1/topics/{topic_id}/trigger
 | Provider | 成本 | 速度 | 推荐场景 |
 |----------|------|------|----------|
 | Twitter API | 低 | 快 | 生产环境 ✅ |
-| Apify | 高 | 中 | 需要更多数据 |
 | Mock | 免费 | 即时 | 开发测试 |
 
 切换 Provider 只需修改 `.env` 中的 `X_PROVIDER`。
@@ -244,7 +243,6 @@ x-news-digest/
 │   ├── services/
 │   │   ├── provider/     # 数据源适配器
 │   │   │   ├── twitter_adapter.py  # Twitter API 集成 ⭐
-│   │   │   ├── apify_adapter.py
 │   │   │   └── mock_adapter.py
 │   │   ├── llm/          # LLM 客户端
 │   │   └── notifier/     # 通知服务
@@ -275,35 +273,6 @@ x-news-digest/
 - 📊 数据库升级 - 新增 `last_tweet_id` 字段追踪采集进度
 - 🧪 完整测试 - 单元测试 + 集成测试覆盖 >90%
 - 📖 详细文档 - 完整的 API 集成指南和使用示例
-
-### 🎯 升级指南
-
-从 Apify 迁移到 Twitter API：
-
-```bash
-# 1. 更新代码
-git pull
-
-# 2. 运行数据库迁移
-docker-compose exec app alembic upgrade head
-
-# 3. 修改 .env
-X_PROVIDER=TWITTER_API
-TWITTER_API_KEY=your_twitter_api_key_here
-
-# 4. 重启服务
-docker-compose restart worker
-```
-
-回滚到 Apify：
-
-```bash
-# 修改 .env
-X_PROVIDER=APIFY
-
-# 重启服务
-docker-compose restart worker
-```
 
 ## 🤝 贡献
 

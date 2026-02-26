@@ -13,9 +13,7 @@ class Settings(BaseSettings):
     REDIS_URL: str
 
     # Provider Configuration
-    X_PROVIDER: str = "MOCK"  # "APIFY", "TWITTER_API", or "MOCK"
-    APIFY_API_TOKEN: Optional[str] = None
-    APIFY_ACTOR_TIMEOUT_SECONDS: int = 300
+    X_PROVIDER: str = "MOCK"  # "TWITTER_API" or "MOCK"
 
     # Twitter API Configuration
     TWITTER_API_KEY: Optional[str] = None

@@ -99,11 +99,8 @@ docker-compose logs -f app      # API service
 docker-compose logs -f worker   # Task executor
 docker-compose logs -f beat     # Scheduler
 
-# Run database migrations
+# Database migrations (see "Database Migrations with Alembic" section below for details)
 docker-compose exec app alembic upgrade head
-
-# Create a new migration
-docker-compose exec app alembic revision --autogenerate -m "description"
 
 # Run tests
 docker-compose exec app pytest tests/ -v
@@ -113,6 +110,10 @@ docker-compose exec app pytest tests/test_twitter_adapter.py -v
 
 # Test with coverage
 docker-compose exec app pytest tests/ --cov=app --cov-report=html
+
+# Code quality (see "Code Quality" section below for details)
+docker-compose exec app ruff check app/
+docker-compose exec app ruff format --check app/
 ```
 
 ### Local Development (Without Docker)
@@ -129,7 +130,13 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
 celery -A app.workers.celery_app beat --loglevel=info
+
+# Monitor Celery tasks with Flower (optional)
+celery -A app.workers.celery_app flower --port=5555
+# For detailed Flower monitoring, see "Troubleshooting" section below
 ```
+
+**Note:** Python >=3.10 is required (see `pyproject.toml`). The `start-local.sh` script uses Python 3.13.
 
 ### Web UI Development
 
@@ -150,6 +157,21 @@ xndctl config       # View configuration
 xndctl user ls      # Test command
 ```
 
+## Code Quality
+
+```bash
+# Run linter
+ruff check app/
+
+# Format code
+ruff format app/
+
+# Check formatting without making changes
+ruff format --check app/
+```
+
+> **Docker equivalent:** See Docker-based Development section above for `docker-compose exec app ruff ...` commands.
+
 ## Testing
 
 ```bash
@@ -160,9 +182,13 @@ pytest tests/ -v
 pytest tests/ -k "twitter" -v
 pytest tests/test_integration_twitter.py::test_incremental_collection -v
 
-# Watch mode for TDD
-pytest tests/ -f  # Requires pytest-watch
+# Run with coverage
+pytest tests/ --cov=app --cov-report=html
+
+# Note: test_thinking_json_mode.py is excluded in CI but can be run locally
 ```
+
+> **Docker equivalent:** See Docker-based Development section above for `docker-compose exec app pytest ...` commands.
 
 **Important Test Files:**
 - `tests/test_twitter_adapter.py`: Unit tests for Twitter API integration
@@ -235,6 +261,14 @@ When the app is running:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 - Health Check: http://localhost:8000/health
+- Flower (Celery monitoring): http://localhost:5555 (if started)
+
+## CI/CD
+
+The project uses GitHub Actions for CI (`.github/workflows/ci.yml`):
+- **Lint job**: Runs Ruff for code quality and formatting checks
+- **Test job**: Runs full test suite with PostgreSQL and Redis services
+- Python 3.11 is used in CI (local dev supports >=3.10)
 
 ## Key Implementation Notes
 
@@ -329,6 +363,15 @@ See `app/db/utils.py:check_duplicate_by_embedding()` for implementation.
 
 ## Troubleshooting
 
+### Local Development Logs
+
+When using `start-local.sh`, service logs are written to:
+- FastAPI: `/tmp/fastapi.log`
+- Celery Worker: `/tmp/celery_worker.log`
+- Celery Beat: `/tmp/celery_beat.log`
+
+View them with: `tail -f /tmp/fastapi.log`
+
 ### Celery Tasks Not Running
 
 ```bash
@@ -341,6 +384,10 @@ docker-compose logs worker | grep "received"
 # Inspect Celery stats
 docker-compose exec worker celery -A app.workers.celery_app inspect active
 docker-compose exec worker celery -A app.workers.celery_app inspect registered
+
+# Check Flower UI for real-time task monitoring
+# Start: celery -A app.workers.celery_app flower --port=5555
+# Visit: http://localhost:5555
 ```
 
 ### Database Connection Issues

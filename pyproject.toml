@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "x-news-digest"
 version = "0.1.0"
-description = "AI-powered Twitter/X news digest system with RAG-based long-term memory"
+description = "AI-powered Twitter/X news digest system"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "X News Digest Team"}
 ]
-keywords = ["twitter", "news", "digest", "llm", "rag", "fastapi"]
+keywords = ["twitter", "news", "digest", "llm", "fastapi"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
