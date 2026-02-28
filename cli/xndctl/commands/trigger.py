@@ -1,53 +1,78 @@
-"""Trigger topic collection command."""
+"""Trigger user digest collection command."""
 
 import click
 from uuid import UUID
 from xndctl.cli import pass_context, Context
-from xndctl.utils import (
-    handle_error,
-    display_success,
-    display_warning,
-    display_info,
-    console
-)
-from xndctl.prompts.subscription import prompt_select_topic
+from xndctl.utils import handle_error, display_success, display_warning, display_info, console
+from xndctl.prompts.subscription import prompt_select_user
 
 
 @click.command(name="trigger")
 @click.option("-p", "--prompt", is_flag=True, required=True, help="Interactive mode (required)")
 @pass_context
 def trigger(ctx: Context, prompt: bool):
-    """Manually trigger topic collection (interactive only)."""
-    try:
-        # Fetch topics
-        topics_result = ctx.client.list_topics(limit=1000)
+    """Manually trigger digest collection for a user (interactive only).
 
-        if not topics_result.items:
-            console.print("[red]Error:[/red] No topics found. Create a topic first.")
+    This command triggers the full digest pipeline for a user:
+    1. Collects data from all topics associated with the user
+    2. Generates an aggregated digest
+    3. Sends notifications via configured channels (Feishu/Email)
+    """
+    try:
+        users_result = ctx.client.list_users(limit=1000)
+
+        if not users_result.items:
+            console.print("[red]Error:[/red] No users found. Create a user first.")
             return
 
-        # Show enabled topics count
-        enabled_count = sum(1 for t in topics_result.items if t.is_enabled)
-        display_info(f"Found {len(topics_result.items)} topics ({enabled_count} enabled)")
+        display_info(f"Found {len(users_result.items)} users")
 
-        # Interactive topic selection
-        selected_topic_id = prompt_select_topic(topics_result.items)
+        selected_user_id = prompt_select_user(users_result.items)
 
-        if not selected_topic_id:
+        if not selected_user_id:
             display_warning("Trigger cancelled")
             return
 
-        # Get topic name for display
-        selected_topic = next(t for t in topics_result.items if t.id == selected_topic_id)
+        selected_user = ctx.client.get_user(selected_user_id)
 
-        # Trigger collection
-        display_info(f"Triggering collection for topic: {selected_topic.name}")
-        result = ctx.client.trigger_topic(selected_topic_id)
+        if not selected_user.topics or len(selected_user.topics) == 0:
+            console.print(
+                f"[yellow]Warning:[/yellow] User '{selected_user.name or selected_user.email}' has no topics configured."
+            )
+            console.print("Add topics to the user's topics list first.")
+            return
 
-        # Display result
-        display_success(f"Collection triggered: {result.message}")
+        console.print(f"[bold]User: {selected_user.name or selected_user.email}[/bold]")
+        console.print(f"[dim]Topics configured: {len(selected_user.topics)}[/dim]")
+        click.echo()
+
+        topics_info = []
+        for topic_id_str in selected_user.topics:
+            try:
+                topic_id = UUID(topic_id_str) if isinstance(topic_id_str, str) else topic_id_str
+                topic = ctx.client.get_topic(topic_id)
+                status = "[green]enabled[/green]" if topic.is_enabled else "[red]disabled[/red]"
+                topics_info.append(f"  - {topic.name} ({status})")
+            except Exception:
+                topics_info.append(f"  - {topic_id_str} ([yellow]not found[/yellow])")
+
+        console.print("[bold]Topics to collect:[/bold]")
+        for info in topics_info:
+            click.echo(info)
+
+        click.echo()
+        if not click.confirm("Trigger digest collection for this user?", default=True):
+            display_warning("Trigger cancelled")
+            return
+
+        display_info(f"Triggering digest collection for user: {selected_user.name or selected_user.email}")
+        result = ctx.client.trigger_user(selected_user_id)
+
+        display_success(f"Digest collection triggered: {result.message}")
         if result.task_id:
             click.echo(f"Task ID: {result.task_id}")
+        if result.user_id:
+            click.echo(f"User ID: {result.user_id}")
 
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)
