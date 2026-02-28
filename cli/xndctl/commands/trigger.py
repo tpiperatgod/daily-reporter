@@ -35,26 +35,28 @@ def trigger(ctx: Context, prompt: bool):
 
         selected_user = ctx.client.get_user(selected_user_id)
 
-        if not selected_user.topics or len(selected_user.topics) == 0:
+        # FIX: Use subscriptions instead of topics
+        if not selected_user.subscriptions or len(selected_user.subscriptions) == 0:
             console.print(
-                f"[yellow]Warning:[/yellow] User '{selected_user.name or selected_user.email}' has no topics configured."
+                f"[yellow]Warning:[/yellow] User '{selected_user.name or selected_user.email}' has no subscriptions."
             )
-            console.print("Add topics to the user's topics list first.")
+            console.print("Create subscriptions to link this user to topics first.")
             return
 
         console.print(f"[bold]User: {selected_user.name or selected_user.email}[/bold]")
-        console.print(f"[dim]Topics configured: {len(selected_user.topics)}[/dim]")
+        console.print(f"[dim]Subscriptions: {len(selected_user.subscriptions)}[/dim]")
         click.echo()
 
+        # FIX: Iterate subscriptions to get topics (already loaded, no extra API calls)
         topics_info = []
-        for topic_id_str in selected_user.topics:
-            try:
-                topic_id = UUID(topic_id_str) if isinstance(topic_id_str, str) else topic_id_str
-                topic = ctx.client.get_topic(topic_id)
-                status = "[green]enabled[/green]" if topic.is_enabled else "[red]disabled[/red]"
-                topics_info.append(f"  - {topic.name} ({status})")
-            except Exception:
-                topics_info.append(f"  - {topic_id_str} ([yellow]not found[/yellow])")
+        topic_ids = []
+        for sub in selected_user.subscriptions:
+            if sub.topic:
+                topic_ids.append(sub.topic.id)
+                status = "[green]enabled[/green]" if sub.topic.is_enabled else "[red]disabled[/red]"
+                topics_info.append(f"  - {sub.topic.name} ({status})")
+            else:
+                topics_info.append(f"  - {sub.topic_id} ([yellow]topic not loaded[/yellow])")
 
         console.print("[bold]Topics to collect:[/bold]")
         for info in topics_info:
@@ -66,13 +68,23 @@ def trigger(ctx: Context, prompt: bool):
             return
 
         display_info(f"Triggering digest collection for user: {selected_user.name or selected_user.email}")
-        result = ctx.client.trigger_user(selected_user_id)
 
-        display_success(f"Digest collection triggered: {result.message}")
-        if result.task_id:
-            click.echo(f"Task ID: {result.task_id}")
-        if result.user_id:
-            click.echo(f"User ID: {result.user_id}")
+        # FIX: Trigger each topic using trigger_topic (trigger_user doesn't exist)
+        triggered_count = 0
+        task_ids = []
+        for topic_id in topic_ids:
+            try:
+                result = ctx.client.trigger_topic(topic_id)
+                triggered_count += 1
+                if result.task_id:
+                    task_ids.append(result.task_id)
+            except Exception as e:
+                console.print(f"[red]Failed to trigger topic {topic_id}: {e}[/red]")
+
+        display_success(f"Digest collection triggered for {triggered_count} topic(s)")
+        if task_ids:
+            click.echo(f"Task IDs: {', '.join(task_ids)}")
+        click.echo(f"User ID: {selected_user.id}")
 
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)
