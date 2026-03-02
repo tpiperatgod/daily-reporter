@@ -142,7 +142,6 @@ class Digest(Base):
         return f"<Digest {self.id}>"
 
 
-
 class UserDigest(Base):
     """User-scoped digest aggregating multiple topics."""
 
@@ -159,6 +158,7 @@ class UserDigest(Base):
 
     # Relationships
     user = relationship("User", back_populates="user_digests")
+    deliveries = relationship("Delivery", back_populates="user_digest", cascade="all, delete-orphan")
 
     # Indexes for efficient queries
     __table_args__ = (Index("ix_user_digests_user_created", "user_id", "created_at"),)
@@ -166,13 +166,15 @@ class UserDigest(Base):
     def __repr__(self):
         return f"<UserDigest {self.id} user={self.user_id}>"
 
+
 class Delivery(Base):
     """Delivery model for tracking notification delivery status."""
 
     __tablename__ = "deliveries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    digest_id = Column(UUID(as_uuid=True), ForeignKey("digests.id", ondelete="CASCADE"), nullable=False)
+    digest_id = Column(UUID(as_uuid=True), ForeignKey("digests.id", ondelete="CASCADE"), nullable=True)
+    user_digest_id = Column(UUID(as_uuid=True), ForeignKey("user_digests.id", ondelete="CASCADE"), nullable=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     channel = Column(String(50), nullable=False)  # 'feishu' or 'email'
     status = Column(String(50), nullable=False, default="pending")  # 'pending', 'success', 'failed'
@@ -183,10 +185,15 @@ class Delivery(Base):
 
     # Relationships
     digest = relationship("Digest", back_populates="deliveries")
+    user_digest = relationship("UserDigest", back_populates="deliveries")
     user = relationship("User", back_populates="deliveries")
 
     # Index for efficient queries
-    __table_args__ = (Index("ix_deliveries_digest_status", "digest_id", "status"),)
+    __table_args__ = (
+        Index("ix_deliveries_digest_status", "digest_id", "status"),
+        Index("ix_deliveries_user_digest_status", "user_digest_id", "status"),
+    )
 
     def __repr__(self):
-        return f"<Delivery {self.channel} - {self.status}>"
+        digest_ref = f"digest={self.digest_id}" if self.digest_id else f"user_digest={self.user_digest_id}"
+        return f"<Delivery {self.channel} - {self.status} {digest_ref}>"

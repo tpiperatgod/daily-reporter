@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db.models import User, Subscription
 from app.api.schemas import (
-UserCreate,
-UserResponse,
-UserWithSubscriptions,
+    UserCreate,
+    UserResponse,
+    UserWithSubscriptions,
     PaginatedResponse,
     UserTriggerResponse,
 )

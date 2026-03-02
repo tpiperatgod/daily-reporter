@@ -208,7 +208,8 @@ class DigestWithDetails(DigestResponse):
 class DeliveryResponse(BaseModel):
     """Schema for delivery response."""
     id: UUID
-    digest_id: UUID
+    digest_id: Optional[UUID] = None
+    user_digest_id: Optional[UUID] = None
     user_id: UUID
     channel: str
     status: str
@@ -218,7 +219,6 @@ class DeliveryResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
 
 # ============================================================================
 # Send Digest Schemas

@@ -1,90 +1,261 @@
 # xndctl - X News Digest CLI Tool
 
-A command-line interface for managing the X News Digest system. Provides user-friendly commands for CRUD operations on users, topics, subscriptions, and manual triggering of data collection and digest notifications.
+X News Digest 的命令行管理工具，提供用户、Topic、订阅的完整管理功能。
 
-## Features
-
-- **User Management**: Create, list, update, and delete users
-- **Topic Management**: Create, list, update, and delete topics with cron-based scheduling
-- **Subscription Management**: Create, list, and delete subscriptions linking users to topics
-- **Manual Triggers**: Manually trigger topic data collection
-- **Digest Notifications**: Manually send digest notifications to subscriptions
-- **Multiple Output Formats**: table (default), JSON, and YAML
-- **Interactive Prompts**: User-friendly interactive mode for all operations
-- **Configuration Management**: Persistent configuration with YAML
-
-## Installation
-
-### From Source
+## 安装
 
 ```bash
 cd cli/
 pip install -e .
 ```
 
-### Requirements
-
+**要求**：
 - Python 3.10+
-- X News Digest backend API running
+- 后端 API 服务运行中
 
-## Quick Start
+## 快速开始
 
-1. **Initialize Configuration**
+### 1. 初始化配置
 
-On first run, xndctl will automatically prompt you to configure the API connection:
+首次运行会自动提示配置：
 
 ```bash
 xndctl config
 ```
 
-Or manually initialize:
+或手动初始化：
 
 ```bash
 xndctl init
 ```
 
-2. **Create a User**
+### 2. 创建用户
 
 ```bash
-# Interactive mode (recommended)
+# 交互模式（推荐）
 xndctl user create -p
 
-# Flag-based mode
+# 标志模式
 xndctl user create --name "John Doe" --email "john@example.com"
 ```
 
-3. **Create a Topic**
+### 3. 创建 Topic
 
 ```bash
-# Interactive mode with cron validation
+# 交互模式（带 cron 验证）
 xndctl topic create -p
 
-# Flag-based mode
+# 标志模式
 xndctl topic create --name "AI News" --query "artificial intelligence" --cron "0 8 * * *"
 ```
 
-4. **Create a Subscription**
+### 4. 创建订阅
 
 ```bash
-# Interactive mode (required for subscriptions)
+# 交互模式（必需）
 xndctl sub create -p
 ```
 
-5. **Trigger Topic Collection**
+### 5. 触发采集
 
 ```bash
 xndctl trigger -p
 ```
 
-6. **Send Digest Notification**
+### 6. 发送通知
 
 ```bash
 xndctl notify -p
 ```
 
-## Configuration
+## 全局选项
 
-Configuration is stored at `~/.xndctl/config.yaml`:
+| 选项 | 说明 |
+|------|------|
+| `-v, --verbose` | 显示详细错误信息和堆栈跟踪 |
+| `-o, --output` | 输出格式：`table`（默认）、`json`、`yaml` |
+
+## 命令参考
+
+### user - 用户管理
+
+#### 创建用户
+
+```bash
+# 交互模式
+xndctl user create -p
+
+# 标志模式
+xndctl user create --name "John Doe" --email "john@example.com" \
+  --feishu-webhook-url "https://..." \
+  --feishu-webhook-secret "secret"
+```
+
+#### 列出用户
+
+```bash
+xndctl user ls
+xndctl user ls --limit 50 --offset 0
+xndctl user ls --output json
+```
+
+#### 获取用户详情
+
+```bash
+xndctl user get --id <uuid>
+xndctl user get --name "John Doe"
+xndctl user get --email "john@example.com"
+```
+
+#### 更新用户
+
+```bash
+# 交互模式
+xndctl user update --name "John Doe" -p
+
+# 标志模式
+xndctl user update --name "John Doe" --new-email "newemail@example.com"
+```
+
+#### 删除用户
+
+```bash
+xndctl user delete --name "John Doe"
+xndctl user delete --id <uuid> -y  # 跳过确认
+```
+
+### topic - Topic 管理
+
+#### 创建 Topic
+
+```bash
+# 交互模式（带 cron 验证）
+xndctl topic create -p
+
+# 标志模式
+xndctl topic create --name "AI News" --query "artificial intelligence" --cron "0 8 * * *"
+```
+
+**Cron 表达式格式**：`minute hour day month weekday`
+
+示例：
+- `0 8 * * *` - 每天 8:00
+- `0 */6 * * *` - 每 6 小时
+- `0 9 * * 1` - 每周一 9:00
+
+#### 列出 Topics
+
+```bash
+xndctl topic ls
+xndctl topic ls --limit 50 --offset 0
+```
+
+#### 获取 Topic 详情
+
+```bash
+xndctl topic get --name "AI News"
+xndctl topic get --id <uuid>
+```
+
+#### 更新 Topic
+
+```bash
+# 交互模式
+xndctl topic update --name "AI News" -p
+
+# 标志模式
+xndctl topic update --name "AI News" --new-name "AI & ML News" --cron "0 9 * * *"
+xndctl topic update --name "AI News" --enable
+xndctl topic update --name "AI News" --disable
+```
+
+#### 删除 Topic
+
+```bash
+xndctl topic delete --name "AI News"
+xndctl topic delete --id <uuid> -y  # 跳过确认
+```
+
+### sub - 订阅管理
+
+#### 创建订阅
+
+```bash
+# 交互模式（必需）
+xndctl sub create -p
+```
+
+此命令会：
+1. 显示可用用户列表
+2. 显示可用 Topic 列表
+3. 提示选择通知渠道（飞书、邮件）
+4. 确认后创建
+
+#### 列出订阅
+
+```bash
+xndctl sub ls
+xndctl sub ls --user-id <uuid>
+xndctl sub ls --topic-id <uuid>
+```
+
+#### 获取订阅详情
+
+```bash
+xndctl sub get --id <uuid>
+```
+
+#### 删除订阅
+
+```bash
+xndctl sub delete --id <uuid>
+xndctl sub delete --id <uuid> -y  # 跳过确认
+```
+
+### trigger - 触发采集
+
+```bash
+xndctl trigger -p
+```
+
+此命令会：
+1. 显示可用用户列表
+2. 显示用户的订阅和 Topics
+3. 触发用户级聚合采集
+4. 显示任务 ID 和 Topic 数量
+
+**触发流程**：
+- 收集用户所有订阅 Topic 的数据
+- 生成单一聚合摘要
+- 通过配置的渠道发送通知
+
+### notify - 发送通知
+
+```bash
+xndctl notify -p
+```
+
+此命令会：
+1. 显示最近的摘要列表
+2. 显示所选摘要的 Topic 订阅
+3. 发送通知到选择的订阅
+4. 显示发送统计（成功/失败数量）
+
+### config - 配置管理
+
+#### 查看配置
+
+```bash
+xndctl config
+```
+
+#### 重新初始化
+
+```bash
+xndctl init
+```
+
+配置存储在 `~/.xndctl/config.yaml`：
 
 ```yaml
 api:
@@ -100,197 +271,11 @@ logging:
   level: "INFO"
 ```
 
-### View Current Configuration
+## 输出格式
 
-```bash
-xndctl config
-```
+### Table（默认）
 
-### Reinitialize Configuration
-
-```bash
-xndctl init
-```
-
-## Commands
-
-### Global Options
-
-- `--verbose, -v`: Enable verbose error output
-- `--output, -o [table|json|yaml]`: Output format
-
-### User Commands
-
-#### Create User
-
-```bash
-# Interactive mode
-xndctl user create -p
-
-# Flag-based mode
-xndctl user create --name "John Doe" --email "john@example.com" \
-  --feishu-webhook-url "https://..." \
-  --feishu-webhook-secret "secret"
-```
-
-#### List Users
-
-```bash
-xndctl user ls
-xndctl user ls --limit 50 --offset 0
-xndctl user ls --output json
-```
-
-#### Get User Details
-
-```bash
-xndctl user get --id <uuid>
-xndctl user get --name "John Doe"
-xndctl user get --email "john@example.com"
-```
-
-#### Update User
-
-```bash
-# Interactive mode
-xndctl user update --name "John Doe" -p
-
-# Flag-based mode
-xndctl user update --name "John Doe" --new-email "newemail@example.com"
-```
-
-#### Delete User
-
-```bash
-xndctl user delete --name "John Doe"
-xndctl user delete --id <uuid> -y  # Skip confirmation
-```
-
-### Topic Commands
-
-#### Create Topic
-
-```bash
-# Interactive mode with cron validation
-xndctl topic create -p
-
-# Flag-based mode
-xndctl topic create --name "AI News" --query "artificial intelligence" --cron "0 8 * * *"
-```
-
-**Cron Expression Format**: `minute hour day month weekday`
-
-Examples:
-- `0 8 * * *` - Daily at 8:00 AM
-- `0 */6 * * *` - Every 6 hours
-- `0 9 * * 1` - Every Monday at 9:00 AM
-
-#### List Topics
-
-```bash
-xndctl topic ls
-xndctl topic ls --limit 50 --offset 0
-```
-
-#### Get Topic Details
-
-```bash
-xndctl topic get --name "AI News"
-xndctl topic get --id <uuid>
-```
-
-#### Update Topic
-
-```bash
-# Interactive mode
-xndctl topic update --name "AI News" -p
-
-# Flag-based mode
-xndctl topic update --name "AI News" --new-name "AI & ML News" --cron "0 9 * * *"
-xndctl topic update --name "AI News" --enable
-xndctl topic update --name "AI News" --disable
-```
-
-#### Delete Topic
-
-```bash
-xndctl topic delete --name "AI News"
-xndctl topic delete --id <uuid> -y  # Skip confirmation
-```
-
-### Subscription Commands
-
-#### Create Subscription
-
-```bash
-# Interactive mode (required)
-xndctl sub create -p
-```
-
-This will:
-1. Show list of available users
-2. Show list of available topics
-3. Prompt for notification channel selection (Feishu, Email)
-4. Confirm before creating
-
-#### List Subscriptions
-
-```bash
-xndctl sub ls
-xndctl sub ls --user-id <uuid>
-xndctl sub ls --topic-id <uuid>
-```
-
-#### Get Subscription Details
-
-```bash
-xndctl sub get --id <uuid>
-```
-
-#### Delete Subscription
-
-```bash
-xndctl sub delete --id <uuid>
-xndctl sub delete --id <uuid> -y  # Skip confirmation
-```
-
-### Trigger Commands
-
-#### Trigger User Digest Collection
-
-```bash
-xndctl trigger -p
-```
-
-This will:
-1. Show list of available users
-2. Show user's subscriptions and topics
-3. Trigger aggregated collection for all subscribed topics
-4. Display single task ID for the user digest pipeline
-
-The triggered pipeline:
-- Collects data from all topics the user is subscribed to
-- Generates a single aggregated digest
-- Sends notifications via configured channels (Feishu/Email)
-### Notify Commands
-
-#### Send Digest Notification
-
-```bash
-xndctl notify -p
-```
-
-This will:
-1. Show list of recent digests
-2. Show subscriptions for selected digest's topic
-3. Send notification to selected subscription
-4. Display delivery statistics (success/failure counts)
-
-## Output Formats
-
-### Table (Default)
-
-Human-readable table format with pagination metadata:
+人类可读的表格格式，带分页元数据：
 
 ```bash
 xndctl user ls
@@ -298,7 +283,7 @@ xndctl user ls
 
 ### JSON
 
-Machine-readable JSON format:
+机器可读的 JSON 格式：
 
 ```bash
 xndctl user ls --output json
@@ -307,141 +292,111 @@ xndctl user ls -o json
 
 ### YAML
 
-Human-readable YAML format:
+人类可读的 YAML 格式：
 
 ```bash
 xndctl topic ls --output yaml
 ```
 
-## Error Handling
+## 错误处理
 
-### Non-Verbose Mode (Default)
+### 默认模式
 
-Clean error messages:
+简洁的错误消息：
 
 ```bash
 xndctl user delete --name "NonExistent"
 # Error: User with name 'NonExistent' not found
 ```
 
-### Verbose Mode
+### 详细模式
 
-Detailed error information with traceback:
+详细的错误信息和堆栈跟踪：
 
 ```bash
 xndctl user ls --verbose
 xndctl user ls -v
 ```
 
-## Examples
-
-### Complete Workflow
+## 完整工作流示例
 
 ```bash
-# 1. Create a user
+# 1. 创建用户
 xndctl user create -p
 # Name: John Doe
 # Email: john@example.com
 
-# 2. Create a topic
+# 2. 创建 Topic
 xndctl topic create -p
 # Name: AI News
 # Query: artificial intelligence
 # Cron: 0 8 * * *
 
-# 3. Create a subscription
+# 3. 创建订阅
 xndctl sub create -p
 # Select user: 1 (John Doe)
 # Select topic: 1 (AI News)
 # Enable Feishu: Yes
 # Enable Email: Yes
 
-# 4. Trigger collection
+# 4. 触发采集
 xndctl trigger -p
-# Select topic: 1 (AI News)
+# Select user: 1 (John Doe)
 
-# 5. Send notification (after collection completes)
+# 5. 发送通知（采集完成后）
 xndctl notify -p
 # Select digest: 1
 # Select subscription: 1
 ```
 
-### Batch Operations
+## 故障排查
+
+### 无法连接到 API
 
 ```bash
-# Create multiple users from a script
-for email in user1@example.com user2@example.com; do
-  xndctl user create --email "$email" --name "$email"
-done
-
-# List all subscriptions in JSON for processing
-xndctl sub ls --output json | jq '.items[] | {user: .user.email, topic: .topic.name}'
-```
-
-## Troubleshooting
-
-### Cannot connect to API
-
-```bash
-# Check API URL in configuration
+# 检查配置中的 API URL
 xndctl config
 
-# Update API URL
+# 更新 API URL
 xndctl init
 ```
 
-### Invalid cron expression
+### 无效的 cron 表达式
 
-Use the format: `minute hour day month weekday`
+使用格式：`minute hour day month weekday`
 
-Valid examples:
-- `0 8 * * *` (daily at 8 AM)
-- `*/30 * * * *` (every 30 minutes)
-- `0 0 * * 0` (weekly on Sunday at midnight)
+有效示例：
+- `0 8 * * *`（每天 8 AM）
+- `*/30 * * * *`（每 30 分钟）
+- `0 0 * * 0`（每周日午夜）
 
-Test at: https://crontab.guru
+测试工具：https://crontab.guru
 
-### Permission errors
+### 权限错误
 
-Ensure the backend API is running and accessible:
+确保后端 API 正在运行且可访问：
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-## Development
-
-### Install for Development
-
-```bash
-cd cli/
-pip install -e ".[dev]"
-```
-
-### Run Tests
-
-```bash
-pytest tests/
-```
-
-### Project Structure
+## 项目结构
 
 ```
 cli/
 ├── xndctl/
-│   ├── __init__.py
-│   ├── cli.py              # Main CLI entry point
-│   ├── config.py           # Configuration management
-│   ├── client.py           # API client
-│   ├── schemas.py          # Pydantic models
-│   ├── utils.py            # Display & error handling
-│   ├── commands/           # Command implementations
+│   ├── cli.py              # 主 CLI 入口
+│   ├── config.py           # 配置管理
+│   ├── client.py           # API 客户端
+│   ├── schemas.py          # Pydantic 模型
+│   ├── utils.py            # 显示和错误处理
+│   ├── commands/           # 命令实现
 │   │   ├── user.py
 │   │   ├── topic.py
 │   │   ├── subscription.py
 │   │   ├── trigger.py
 │   │   └── notify.py
-│   └── prompts/            # Interactive prompts
+│   └── prompts/            # 交互式提示
 │       ├── user.py
 │       ├── topic.py
 │       └── subscription.py
@@ -450,14 +405,7 @@ cli/
 └── README.md
 ```
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-## License
+## 许可证
 
 MIT License
+

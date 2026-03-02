@@ -71,3 +71,4 @@ docker-compose.override.yml
 celerybeat-schedule
 celerybeat-schedule-shm
 celerybeat-schedule-wal
+/.sisyphus/

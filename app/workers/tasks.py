@@ -497,8 +497,7 @@ async def _notify_async(self, digest_id: str):
                     continue
 
                 # Use shared service to send and track deliveries
-                deliveries = await send_digest_to_user(digest=digest, user=user, channels=channels, session=session)
-
+                deliveries = await send_digest_to_user(user=user, channels=channels, session=session, digest=digest)
                 # Aggregate results
                 for delivery in deliveries:
                     deliveries_created += 1
@@ -554,12 +553,12 @@ def collect_user_topics(self, user_id: str):
 
 async def _collect_user_topics_async(self, user_id: str):
     """Async implementation of collect_user_topics task.
-    
+
     Collects data from all topics a user is subscribed to.
     """
     from app.db.session import get_async_session_local
     from app.db.utils import batch_check_exists
-    
+
     try:
         async with get_async_session_local()() as session:
             # 1. Load user with subscriptions and topics
@@ -569,11 +568,11 @@ async def _collect_user_topics_async(self, user_id: str):
                 .where(User.id == user_id)
             )
             user = result.scalar_one_or_none()
-            
+
             if not user:
                 logger.error(f"User {user_id} not found")
                 return {"status": "error", "message": "User not found"}
-            
+
             if not user.subscriptions:
                 logger.info(f"User {user_id} has no subscriptions")
                 return {
@@ -582,50 +581,48 @@ async def _collect_user_topics_async(self, user_id: str):
                     "user_id": user_id,
                     "items_collected": 0,
                 }
-            
-            logger.info(
-                f"Collecting data for user {user_id} with {len(user.subscriptions)} subscriptions"
-            )
-            
+
+            logger.info(f"Collecting data for user {user_id} with {len(user.subscriptions)} subscriptions")
+
             # Track aggregated results
             total_items_collected = 0
             all_new_items = []
             topics_processed = 0
             min_item_created_at = None
             max_item_created_at = None
-            
+
             # Get provider once (shared across topics)
             provider = get_provider()
-            
+
             # 2. Process each subscription's topic
             for subscription in user.subscriptions:
                 topic = subscription.topic
-                
+
                 if not topic:
                     logger.warning(f"Subscription {subscription.id} has no topic")
                     continue
-                
+
                 if not topic.is_enabled:
                     logger.info(f"Topic {topic.name} is disabled, skipping")
                     continue
-                
+
                 logger.info(
                     f"Collecting data for topic: {topic.name}",
                     extra={"topic_id": str(topic.id), "query": topic.query},
                 )
-                
+
                 # Calculate time window for this topic
                 end_date = datetime.now(UTC)
                 if topic.last_collection_timestamp:
                     start_date = topic.last_collection_timestamp
                 else:
                     start_date = end_date - timedelta(hours=24)
-                
+
                 logger.info(
                     f"Time window: {start_date} to {end_date}",
                     extra={"start": start_date.isoformat(), "end": end_date.isoformat()},
                 )
-                
+
                 # Fetch items from provider
                 fetch_kwargs = {
                     "query": topic.query,
@@ -633,49 +630,49 @@ async def _collect_user_topics_async(self, user_id: str):
                     "end_date": end_date,
                     "max_items": 100,
                 }
-                
+
                 # Add since_id if available and provider supports it
                 if topic.last_tweet_id:
                     sig = inspect.signature(provider.fetch)
                     if "since_id" in sig.parameters:
                         fetch_kwargs["since_id"] = topic.last_tweet_id
                         logger.info(f"Using since_id: {topic.last_tweet_id}")
-                
+
                 try:
                     raw_items = await provider.fetch(**fetch_kwargs)
                 except Exception as e:
                     logger.error(f"Failed to fetch items for topic {topic.name}: {e}")
                     continue
-                
+
                 logger.info(f"Fetched {len(raw_items)} items from provider for topic {topic.name}")
-                
+
                 if not raw_items:
                     logger.info(f"No items fetched for topic {topic.name}")
                     topic.last_collection_timestamp = end_date
                     await session.commit()
                     topics_processed += 1
                     continue
-                
+
                 # 3. Process items with deduplication using batch embeddings
                 embedding_provider = get_embedding_provider()
                 llm_client = LLMClient(embedding_provider=embedding_provider)
                 new_items = []
                 duplicates = 0
-                
+
                 # Generate embeddings in batch for all items
                 texts = [raw_item.text for raw_item in raw_items]
                 logger.info(f"Generating embeddings for {len(texts)} items in batch")
-                
+
                 try:
                     embedding_hashes = await llm_client.generate_embedding_hashes_batch(texts)
                 except Exception as e:
                     logger.error(f"Batch embedding generation failed: {e}")
                     embedding_hashes = [None] * len(texts)
-                
+
                 # Batch check for existing items (fixes N+1 query problem)
                 source_ids = [raw_item.source_id for raw_item in raw_items]
                 embedding_hashes_non_null = [h for h in embedding_hashes if h is not None]
-                
+
                 # Batch check existing source_ids (GLOBAL uniqueness)
                 existing_source_ids = await batch_check_exists(
                     session,
@@ -683,7 +680,7 @@ async def _collect_user_topics_async(self, user_id: str):
                     Item.source_id,
                     source_ids,
                 )
-                
+
                 # Batch check existing embedding hashes (topic-scoped)
                 existing_hashes = (
                     await batch_check_exists(
@@ -696,10 +693,10 @@ async def _collect_user_topics_async(self, user_id: str):
                     if embedding_hashes_non_null
                     else set()
                 )
-                
+
                 # Process each item with in-memory duplicate checking
                 seen_source_ids = set()
-                
+
                 for raw_item, embedding_hash in zip(raw_items, embedding_hashes):
                     # Check for intra-batch duplicate source_id
                     if raw_item.source_id in seen_source_ids:
@@ -707,18 +704,18 @@ async def _collect_user_topics_async(self, user_id: str):
                         logger.debug(f"Skipping intra-batch duplicate source_id: {raw_item.source_id}")
                         continue
                     seen_source_ids.add(raw_item.source_id)
-                    
+
                     # Check for duplicate by source_id (in-memory)
                     if raw_item.source_id in existing_source_ids:
                         duplicates += 1
                         continue
-                    
+
                     # Also check by embedding_hash if available
                     if embedding_hash and embedding_hash in existing_hashes:
                         duplicates += 1
                         logger.debug(f"Duplicate found via embedding hash: {raw_item.source_id}")
                         continue
-                    
+
                     # Create new item
                     item = Item(
                         topic_id=topic.id,
@@ -733,28 +730,28 @@ async def _collect_user_topics_async(self, user_id: str):
                         embedding_hash=embedding_hash,
                     )
                     new_items.append(item)
-                
+
                 # 4. Insert new items
                 if new_items:
                     session.add_all(new_items)
                     await session.commit()
                     logger.info(f"Inserted {len(new_items)} new items for topic {topic.name}")
-                    
+
                     # Track for aggregated time window
                     for item in new_items:
                         if min_item_created_at is None or item.created_at < min_item_created_at:
                             min_item_created_at = item.created_at
                         if max_item_created_at is None or item.created_at > max_item_created_at:
                             max_item_created_at = item.created_at
-                    
+
                     all_new_items.extend(new_items)
                     total_items_collected += len(new_items)
                 else:
                     logger.info(f"No new items after deduplication for topic {topic.name}")
-                
+
                 # 5. Update last_collection_timestamp and last_tweet_id
                 topic.last_collection_timestamp = end_date
-                
+
                 # Track highest tweet ID
                 if raw_items:
                     max_tweet_id = None
@@ -765,15 +762,15 @@ async def _collect_user_topics_async(self, user_id: str):
                                 max_tweet_id = current_id
                         except ValueError:
                             continue
-                    
+
                     if max_tweet_id is not None:
                         topic.last_tweet_id = str(max_tweet_id)
                         logger.info(f"Updated last_tweet_id to: {topic.last_tweet_id}")
-                
+
                 await session.commit()
                 await llm_client.close()
                 topics_processed += 1
-            
+
             # 6. Chain to generate_user_digest if we have new items
             if all_new_items:
                 logger.info("Chaining to generate_user_digest task")
@@ -782,7 +779,7 @@ async def _collect_user_topics_async(self, user_id: str):
                     window_start=min_item_created_at.isoformat(),
                     window_end=max_item_created_at.isoformat(),
                 )
-            
+
             return {
                 "status": "success",
                 "message": f"Collected {total_items_collected} items from {topics_processed} topics",
@@ -790,7 +787,7 @@ async def _collect_user_topics_async(self, user_id: str):
                 "items_collected": total_items_collected,
                 "topics_processed": topics_processed,
             }
-    
+
     except Exception as e:
         logger.error(f"Error in collect_user_topics for user {user_id}: {e}")
         return {
@@ -1003,23 +1000,18 @@ async def _notify_user_digest_async(self, user_digest_id: str):
     """Async implementation of notify_user_digest task.
 
     Sends notification for a user digest via configured channels (Feishu/Email)
-    and creates delivery records for tracking.
+    and creates delivery records for tracking using the shared delivery service.
     """
     from app.db.session import get_async_session_local
-    from app.db.models import UserDigest, Delivery
-    from app.services.notifier.feishu import FeishuNotifier
-    from app.services.notifier.email import EmailNotifier
-    from app.services.llm.client import DigestResult
+    from app.db.models import UserDigest
+    from app.services.notifier.delivery import send_digest_to_user
     from app.core.constants import NotificationChannel, DeliveryStatus
-    from app.core.config import settings
 
     try:
         async with get_async_session_local()() as session:
             # 1. Load UserDigest with User
             result = await session.execute(
-                select(UserDigest)
-                .options(selectinload(UserDigest.user))
-                .where(UserDigest.id == user_digest_id)
+                select(UserDigest).options(selectinload(UserDigest.user)).where(UserDigest.id == user_digest_id)
             )
             user_digest = result.scalar_one_or_none()
 
@@ -1028,96 +1020,50 @@ async def _notify_user_digest_async(self, user_digest_id: str):
                 return {"status": "error", "message": "UserDigest not found"}
 
             user = user_digest.user
-            channels_used = []
-            successful = 0
-            failed = 0
 
-            # 2. Parse DigestResult from summary_json
-            try:
-                digest_result = DigestResult(**user_digest.summary_json)
-            except Exception as e:
-                logger.error(f"Failed to parse summary_json: {e}")
-                return {"status": "error", "message": f"Invalid summary_json: {e}"}
-
-            # 3. Send via Feishu if configured
+            # 2. Determine notification channels from user configuration
+            channels = []
             if user.feishu_webhook_url:
-                delivery = Delivery(
-                    digest_id=None,  # UserDigest, not regular Digest
-                    user_id=str(user.id),
-                    channel=NotificationChannel.FEISHU,
-                    status=DeliveryStatus.PENDING,
-                )
-                session.add(delivery)
-                await session.flush()
-
-                try:
-                    feishu_notifier = FeishuNotifier(log_only=False)
-                    await feishu_notifier.send(
-                        webhook_url=user.feishu_webhook_url,
-                        digest_result=digest_result,
-                        topic_name="User Digest",
-                        webhook_secret=user.feishu_webhook_secret,
-                    )
-                    await feishu_notifier.close()
-
-                    delivery.status = DeliveryStatus.SUCCESS
-                    delivery.sent_at = datetime.now(UTC)
-                    channels_used.append(NotificationChannel.FEISHU)
-                    successful += 1
-
-                    logger.info(
-                        f"Sent user digest {user_digest_id} via Feishu",
-                        extra={
-                            "user_id": str(user.id),
-                            "delivery_id": str(delivery.id),
-                        },
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to send via Feishu: {e}")
-                    delivery.status = DeliveryStatus.FAILED
-                    delivery.error_msg = str(e)
-                    delivery.retry_count += 1
-                    failed += 1
-
-            # 4. Send via Email if configured
+                channels.append(NotificationChannel.FEISHU)
             if user.email:
-                delivery = Delivery(
-                    digest_id=None,  # UserDigest, not regular Digest
-                    user_id=str(user.id),
-                    channel=NotificationChannel.EMAIL,
-                    status=DeliveryStatus.PENDING,
-                )
-                session.add(delivery)
-                await session.flush()
+                channels.append(NotificationChannel.EMAIL)
 
-                try:
-                    email_notifier = EmailNotifier(log_only=settings.EMAIL_LOG_ONLY)
-                    await email_notifier.send(
-                        to_email=user.email,
-                        subject="Your Personalized Digest",
-                        content=user_digest.rendered_content,
-                    )
+            if not channels:
+                logger.info(f"No notification channels configured for user {user.id}")
+                return {
+                    "status": "success",
+                    "message": "No channels configured",
+                    "user_digest_id": user_digest_id,
+                    "channels": [],
+                    "successful": 0,
+                    "failed": 0,
+                }
 
-                    delivery.status = DeliveryStatus.SUCCESS
-                    delivery.sent_at = datetime.now(UTC)
-                    channels_used.append(NotificationChannel.EMAIL)
-                    successful += 1
+            # 3. Use shared service to send notifications (idempotent to prevent duplicates on retry)
+            deliveries = await send_digest_to_user(
+                user=user,
+                channels=channels,
+                session=session,
+                user_digest=user_digest,
+                idempotent=True,
+            )
 
-                    logger.info(
-                        f"Sent user digest {user_digest_id} via Email",
-                        extra={
-                            "user_id": str(user.id),
-                            "delivery_id": str(delivery.id),
-                        },
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to send via Email: {e}")
-                    delivery.status = DeliveryStatus.FAILED
-                    delivery.error_msg = str(e)
-                    delivery.retry_count += 1
-                    failed += 1
+            # 4. Aggregate results
+            successful = sum(1 for d in deliveries if d.status == DeliveryStatus.SUCCESS)
+            failed = sum(1 for d in deliveries if d.status == DeliveryStatus.FAILED)
+            channels_used = [d.channel for d in deliveries if d.status == DeliveryStatus.SUCCESS]
 
             await session.commit()
+
+            logger.info(
+                "User digest notifications completed",
+                extra={
+                    "user_digest_id": user_digest_id,
+                    "user_id": str(user.id),
+                    "successful": successful,
+                    "failed": failed,
+                },
+            )
 
             return {
                 "status": "success",
@@ -1149,5 +1095,3 @@ __all__ = [
     "generate_user_digest",
     "notify_user_digest",
 ]
-
-

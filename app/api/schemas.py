@@ -254,7 +254,8 @@ class DeliveryResponse(BaseModel):
     """Schema for delivery response."""
 
     id: UUID
-    digest_id: UUID
+    digest_id: Optional[UUID] = None
+    user_digest_id: Optional[UUID] = None
     user_id: UUID
     channel: str
     status: str

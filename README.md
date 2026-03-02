@@ -2,26 +2,28 @@
 
 基于 Twitter API 的自动化新闻摘要系统，使用 LLM 生成智能摘要并通过飞书/邮件推送。
 
-## ✨ 核心功能
+## 核心功能
 
 - 🐦 **Twitter 数据收集**：支持 Twitter API、Mock 两种数据源
 - 🔄 **增量采集**：使用 `since_id` 机制，仅获取新推文（节省 90%+ API 调用）
-- 🤖 **AI 摘要**：集成 DeepSeek/OpenAI LLM 生成智能摘要
+- 🤖 **AI 摘要**：集成 DeepSeek/OpenAI/GLM 生成智能摘要
 - 📅 **定时任务**：基于 Cron 表达式的自动化采集
 - 📧 **多渠道推送**：支持飞书 Webhook 和邮件通知
 - 🎯 **去重机制**：基于 embedding 的语义去重
-- 📊 **完整 API**：RESTful API + Swagger 文档
+- 📊 **RESTful API**：完整的 API + Swagger 文档
 
-## 🏗️ 技术栈
+## 技术栈
 
-- **后端框架**：FastAPI + Uvicorn
+- **后端**：FastAPI + Uvicorn
 - **数据库**：PostgreSQL + Alembic (异步 ORM)
 - **任务队列**：Celery + Redis
 - **数据源**：Twitter API (twitterapi.io)
-- **LLM**：DeepSeek / OpenAI / GLM（支持 Chat 和 Embedding 使用不同 provider）
+- **LLM**：DeepSeek / OpenAI / GLM
 - **容器化**：Docker + Docker Compose
+- **前端**：Next.js 16 + React 19 + Tailwind CSS v4
+- **CLI**：Click-based `xndctl` 工具
 
-## 🚀 快速开始
+## 快速开始
 
 ### 1. 克隆项目
 
@@ -33,34 +35,28 @@ cd x-news-digest
 ### 2. 配置环境变量
 
 ```bash
-# 复制环境变量模板
 cp .env.example .env
-
-# 编辑 .env 文件，配置以下必需参数：
-# - TWITTER_API_KEY (从 https://twitterapi.io 获取)
-# - LLM_CHAT_API_KEY 和 LLM_EMBEDDING_API_KEY
-# - SMTP 配置（如需邮件通知）
+# 编辑 .env 文件，配置必需参数
 ```
 
-**最小配置示例：**
+**最小配置**：
 
 ```bash
-# Provider
 X_PROVIDER=TWITTER_API
 TWITTER_API_KEY=your_twitter_api_key_here
 
-# LLM - 可使用相同或不同的 provider
 LLM_CHAT_API_KEY=your_chat_api_key_here
 LLM_EMBEDDING_API_KEY=your_embedding_api_key_here
-
-# 其他使用默认值即可
 ```
 
 ### 3. 启动服务
 
 ```bash
-# 启动所有服务（首次启动会自动构建镜像和运行数据库迁移）
-docker-compose up -d
+# 开发模式（推荐）
+docker-compose --profile dev up -d
+
+# 生产模式
+docker-compose --profile prod up -d
 
 # 查看日志
 docker-compose logs -f
@@ -69,226 +65,226 @@ docker-compose logs -f
 ### 4. 验证服务
 
 ```bash
-# 检查健康状态
+# 健康检查
 curl http://localhost:8000/health
 
-# 访问 API 文档
+# API 文档
 open http://localhost:8000/docs
 ```
 
-### 5. 创建第一个 Topic
+### 5. 创建第一个摘要
 
 ```bash
+# 安装 CLI
+cd cli && pip install -e .
+
 # 创建用户
-curl -X POST http://localhost:8000/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Test User", "email": "test@example.com"}'
+xndctl user create -p
 
-# 创建 Topic（监控 @karpathy 的推文）
-curl -X POST http://localhost:8000/api/v1/topics \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Karpathy Updates",
-    "query": "@karpathy",
-    "cron_expression": "0 9 * * *"
-  }'
+# 创建 Topic
+xndctl topic create -p
 
-# 手动触发采集（替换 {topic_id}）
-curl -X POST http://localhost:8000/api/v1/topics/{topic_id}/trigger
+# 创建订阅
+xndctl sub create -p
+
+# 触发采集
+xndctl trigger -p
 ```
 
-## 📚 文档
+## 核心特性
 
-- **[快速开始指南](QUICKSTART.md)** - 详细的部署和配置说明
-- **[Twitter API 集成指南](docs/twitter-api-integration.md)** - API 文档和使用示例
-- **[实现总结](IMPLEMENTATION_SUMMARY.md)** - 技术实现细节
+### 1. 用户级聚合触发（推荐）
 
-## 🏛️ 架构设计
+系统支持**用户级聚合触发**，一次触发收集用户所有订阅 Topic 的数据并生成单一聚合摘要：
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         用户                                 │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    FastAPI (REST API)                        │
-│  - 用户管理  - Topic 管理  - 手动触发  - 查询数据          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                ┌─────────────┴─────────────┐
-                ▼                           ▼
-┌──────────────────────────┐   ┌──────────────────────────┐
-│   Celery Beat (调度)      │   │   Celery Worker (执行)   │
-│  - 定时触发采集任务       │   │  - 数据采集              │
-│  - 更新任务调度           │   │  - 摘要生成              │
-└──────────────────────────┘   │  - 通知推送              │
-                               └──────────────────────────┘
-                                         │
-                ┌────────────────────────┼────────────────────┐
-                ▼                        ▼                    ▼
-┌──────────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  Twitter API         │  │  LLM APIs        │  │  PostgreSQL      │
-│  - 推文采集          │  │  - Chat (摘要)   │  │  - 数据存储      │
-│  - 增量更新          │  │  - Embedding去重 │  │  - 状态管理      │
-└──────────────────────┘  └──────────────────┘  └──────────────────┘
-                                         │
-                                         ▼
-                          ┌──────────────────────────┐
-                          │   通知渠道                │
-                          │  - 飞书 Webhook          │
-                          │  - 邮件推送              │
-                          └──────────────────────────┘
+```bash
+# 触发用户所有订阅的采集
+POST /api/v1/users/{user_id}/trigger
 ```
 
-## 🔑 核心特性
+**流程**：
+1. 收集用户所有订阅 Topic 的数据
+2. 生成单一聚合摘要
+3. 通过配置的渠道推送通知
 
-### 1. 增量采集（since_id）
+### 2. 增量采集（since_id）
 
-传统方式每次获取所有历史推文，浪费 API 额度：
-```
-第一次: 获取 1000 条推文
-第二次: 获取 1000 条推文 (990 条重复)
-第三次: 获取 1000 条推文 (995 条重复)
-```
+使用 `since_id` 参数只获取新推文，大幅减少 API 调用：
 
-使用 `since_id` 只获取新推文：
 ```
 第一次: 获取 1000 条推文，记录 last_tweet_id = 12345
 第二次: 获取 since_id:12345 之后的 10 条新推文
 第三次: 获取 since_id:12356 之后的 5 条新推文
 ```
 
-**成本节省：90%+ 的 API 调用减少**
+**成本节省**：90%+ 的 API 调用减少
 
-### 2. 智能去重
+### 3. 智能去重
 
 - **Source ID 去重**：推文 ID 唯一性检查
 - **Embedding 去重**：语义相似度检测（转发/引用）
 
-### 3. 多 Provider 支持
+## API 概览
 
-| Provider | 成本 | 速度 | 推荐场景 |
-|----------|------|------|----------|
-| Twitter API | 低 | 快 | 生产环境 ✅ |
-| Mock | 免费 | 即时 | 开发测试 |
+### 核心端点
 
-切换 Provider 只需修改 `.env` 中的 `X_PROVIDER`。
+| 资源 | 端点 | 说明 |
+|------|------|------|
+| Users | `POST /api/v1/users` | 创建用户 |
+| | `POST /api/v1/users/{id}/trigger` | **触发用户摘要** |
+| Topics | `POST /api/v1/topics` | 创建 Topic |
+| | `GET /api/v1/topics` | 列出 Topics |
+| Subscriptions | `POST /api/v1/subscriptions` | 创建订阅 |
+| Digests | `GET /api/v1/digests` | 列出摘要 |
+| | `POST /api/v1/digests/{id}/send` | 手动发送 |
 
-## 📊 数据流程
+**完整 API 文档**：运行后访问 `http://localhost:8000/docs`
 
-```
-1. 定时触发 (Celery Beat)
-   └─> 2. 数据采集 (Worker Task)
-       ├─> 3. 调用 Twitter API (TwitterAPIAdapter)
-       │   └─> 使用 since_id 获取新推文
-       ├─> 4. 生成 Embedding (LLM)
-       ├─> 5. 去重检查 (Database)
-       └─> 6. 存储数据 (PostgreSQL)
-           └─> 7. 生成摘要 (LLM)
-               └─> 8. 推送通知 (飞书/邮件)
-```
-
-## 🧪 测试
+## 常用命令
 
 ```bash
-# 运行所有测试
-docker-compose exec app pytest tests/ -v
+# Docker 操作
+docker-compose --profile dev up -d    # 启动开发环境
+docker-compose down                   # 停止服务
+docker-compose logs -f app            # 查看日志
 
-# 运行单元测试
-docker-compose exec app pytest tests/test_twitter_adapter.py -v
-
-# 运行集成测试
-docker-compose exec app pytest tests/test_integration_twitter.py -v
-
-# 测试覆盖率
-docker-compose exec app pytest tests/ --cov=app --cov-report=html
-```
-
-## 🔧 常用命令
-
-```bash
-# 启动服务
-docker-compose up -d
-
-# 停止服务
-docker-compose down
-
-# 查看日志
-docker-compose logs -f app      # API 服务
-docker-compose logs -f worker   # 任务执行器
-docker-compose logs -f beat     # 定时调度器
-
-# 重启服务
-docker-compose restart worker
-
-# 进入数据库
-docker-compose exec postgres psql -U xnews -d xnews_digest
-
-# 运行数据库迁移
+# 数据库迁移
 docker-compose exec app alembic upgrade head
 
-# 查看 Celery 任务
-docker-compose exec worker celery -A app.workers.celery_app inspect active
+# CLI 操作
+xndctl user ls                        # 列出用户
+xndctl topic ls                       # 列出 Topics
+xndctl trigger -p                     # 触发采集
+xndctl notify -p                      # 发送通知
+
+# 测试
+docker-compose exec app pytest tests/ -v
 ```
 
-## 📁 项目结构
+## 项目结构
 
 ```
 x-news-digest/
 ├── app/
-│   ├── api/              # API 路由和 schemas
-│   ├── core/             # 核心配置和日志
-│   ├── db/               # 数据库模型和会话
-│   ├── services/
+│   ├── api/              # API 路由
+│   ├── core/             # 配置和日志
+│   ├── db/               # 数据库模型
+│   ├── services/         # 业务逻辑
 │   │   ├── provider/     # 数据源适配器
-│   │   │   ├── twitter_adapter.py  # Twitter API 集成 ⭐
-│   │   │   └── mock_adapter.py
 │   │   ├── llm/          # LLM 客户端
 │   │   └── notifier/     # 通知服务
 │   └── workers/          # Celery 任务
-├── alembic/              # 数据库迁移
-│   └── versions/
-│       ├── 001_initial_schema.py
-│       └── 002_add_last_tweet_id.py  # 新增 ⭐
+├── cli/xndctl/           # CLI 工具
+├── webui/                # Next.js 前端
 ├── tests/                # 测试
-│   ├── test_twitter_adapter.py       # 单元测试 ⭐
-│   └── test_integration_twitter.py   # 集成测试 ⭐
-├── docs/
-│   └── twitter-api-integration.md    # API 文档 ⭐
-├── docker-compose.yml    # Docker 编排
-├── Dockerfile           # 应用镜像
-├── requirements.txt     # Python 依赖
-├── .env.example         # 环境变量模板
-├── QUICKSTART.md        # 快速开始指南 ⭐
-└── README.md           # 项目说明
+├── alembic/              # 数据库迁移
+└── docker-compose.yml    # Docker 编排
 ```
 
-## 🌟 最新更新 (2025-01-31)
+## 配置说明
 
-### ✅ Twitter API 直接集成
+### 环境变量
 
-- ✨ 新增 `TwitterAPIAdapter` - 直接调用 twitterapi.io API
-- 🚀 增量采集 - 使用 `since_id` 参数，减少 90%+ API 调用
-- 📊 数据库升级 - 新增 `last_tweet_id` 字段追踪采集进度
-- 🧪 完整测试 - 单元测试 + 集成测试覆盖 >90%
-- 📖 详细文档 - 完整的 API 集成指南和使用示例
+**必需配置**：
 
-## 🤝 贡献
+```bash
+# 数据源
+X_PROVIDER=TWITTER_API              # 或 MOCK
+TWITTER_API_KEY=your_key_here
 
-欢迎提交 Issue 和 Pull Request！
+# LLM (Chat)
+LLM_CHAT_BASE_URL=https://api.openai.com/v1
+LLM_CHAT_MODEL=gpt-4-turbo
+LLM_CHAT_API_KEY=your_key_here
 
-## 📄 许可证
+# LLM (Embedding)
+LLM_EMBEDDING_PROVIDER=openai       # 或 ollama
+OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_API_KEY=your_key_here
+```
+
+**可选配置**：
+
+```bash
+# 时区（默认：Asia/Shanghai）
+CRON_TIMEZONE=Asia/Shanghai
+
+# 邮件（默认：log_only=true）
+EMAIL_LOG_ONLY=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+```
+
+## 监控
+
+### 健康检查
+
+```bash
+GET /health
+```
+
+返回组件状态：
+- Database：数据库连接
+- Redis：缓存连接
+- Celery：任务队列
+
+### Celery 监控
+
+```bash
+# 启动 Flower（可选）
+celery -A app.workers.celery_app flower --port=5555
+
+# 访问
+open http://localhost:5555
+```
+
+## 故障排查
+
+### 服务无法启动
+
+```bash
+# 检查服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs app
+docker-compose logs worker
+```
+
+### API 调用失败
+
+```bash
+# 检查健康状态
+curl http://localhost:8000/health
+
+# 检查 Celery
+docker-compose exec worker celery -A app.workers.celery_app inspect active
+```
+
+### CLI 连接失败
+
+```bash
+# 检查配置
+xndctl config
+
+# 重新初始化
+xndctl init
+```
+
+## 文档
+
+- **[CLI 文档](cli/README.md)** - xndctl 命令行工具使用指南
+- **[API 文档](http://localhost:8000/docs)** - 运行后访问 Swagger UI
+- **[环境变量](.env.example)** - 完整配置示例
+
+## 许可证
 
 MIT License
 
-## 🙏 致谢
+## 致谢
 
 - [twitterapi.io](https://twitterapi.io) - Twitter API 服务
-- [DeepSeek](https://platform.deepseek.com) - LLM 服务
 - [FastAPI](https://fastapi.tiangolo.com) - Web 框架
-- [Celery](https://docs.celeryproject.org) - 分布式任务队列
+- [Celery](https://docs.celeryproject.org) - 任务队列
 
----
-
-**Happy Digesting! 📰✨**

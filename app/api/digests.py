@@ -244,8 +244,7 @@ async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSess
         },
     )
 
-    deliveries = await send_digest_to_user(digest=digest, user=user, channels=channels, session=db)
-
+    deliveries = await send_digest_to_user(user=user, channels=channels, session=db, digest=digest)
     await db.commit()
 
     # 7. Build response

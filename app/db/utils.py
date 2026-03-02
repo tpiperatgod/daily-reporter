@@ -240,10 +240,10 @@ async def fetch_items_for_user_topics(
 
     return unique_items
 
+
 __all__ = [
     "get_entity_or_404",
     "paginate_query",
     "batch_check_exists",
     "fetch_items_for_user_topics",
 ]
-
