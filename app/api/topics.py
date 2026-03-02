@@ -199,12 +199,15 @@ async def trigger_topic_collection(topic_id: UUID, db: AsyncSession = Depends(ge
     """
     Manually trigger data collection for a topic.
 
+    **DEPRECATED**: This endpoint is deprecated. Use POST /users/{user_id}/trigger
+    for user-scoped aggregation instead.
+
     Args:
         topic_id: Topic UUID
         db: Database session
 
     Returns:
-        Trigger response with task ID
+        Trigger response with task ID and deprecation warning
 
     Raises:
         HTTPException: If topic not found or not enabled
@@ -230,4 +233,6 @@ async def trigger_topic_collection(topic_id: UUID, db: AsyncSession = Depends(ge
         message="Data collection task triggered",
         task_id=task.id,
         topic_id=str(topic_id),
+        deprecated=True,
+        deprecation_message="Use POST /users/{user_id}/trigger for user-scoped aggregation",
     )

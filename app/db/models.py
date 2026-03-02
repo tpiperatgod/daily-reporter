@@ -31,6 +31,7 @@ class User(Base):
     # Relationships
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
     deliveries = relationship("Delivery", back_populates="user")
+    user_digests = relationship("UserDigest", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.email}>"
@@ -140,6 +141,30 @@ class Digest(Base):
     def __repr__(self):
         return f"<Digest {self.id}>"
 
+
+
+class UserDigest(Base):
+    """User-scoped digest aggregating multiple topics."""
+
+    __tablename__ = "user_digests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    topic_ids = Column(JSONB, nullable=False)  # Array of topic UUIDs aggregated
+    time_window_start = Column(DateTime(timezone=True), nullable=False)
+    time_window_end = Column(DateTime(timezone=True), nullable=False)
+    summary_json = Column(JSONB, nullable=False)  # Structured summary result
+    rendered_content = Column(Text, nullable=False)  # Rendered markdown content
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="user_digests")
+
+    # Indexes for efficient queries
+    __table_args__ = (Index("ix_user_digests_user_created", "user_id", "created_at"),)
+
+    def __repr__(self):
+        return f"<UserDigest {self.id} user={self.user_id}>"
 
 class Delivery(Base):
     """Delivery model for tracking notification delivery status."""

@@ -314,6 +314,40 @@ class TriggerResponse(BaseModel):
     message: str
     task_id: Optional[str] = None
     topic_id: Optional[str] = None
+    deprecated: Optional[bool] = None
+    deprecation_message: Optional[str] = None
+
+
+# ============================================================================
+# User-Scoped Trigger Response Schemas
+# ============================================================================
+
+
+class UserTriggerResponse(BaseModel):
+    """Schema for user-scoped manual trigger response with aggregated topic count."""
+
+    status: str
+    message: str
+    task_id: Optional[str] = None
+    user_id: UUID
+    topic_count: int
+
+    class Config:
+        from_attributes = True
+
+
+class UserDigestResponse(BaseModel):
+    """Schema for aggregated digest response metadata for a user."""
+
+    id: UUID
+    user_id: UUID
+    topic_ids: List[UUID]
+    time_window_start: datetime
+    time_window_end: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 # ============================================================================
