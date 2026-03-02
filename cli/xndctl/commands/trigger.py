@@ -69,22 +69,13 @@ def trigger(ctx: Context, prompt: bool):
 
         display_info(f"Triggering digest collection for user: {selected_user.name or selected_user.email}")
 
-        # FIX: Trigger each topic using trigger_topic (trigger_user doesn't exist)
-        triggered_count = 0
-        task_ids = []
-        for topic_id in topic_ids:
-            try:
-                result = ctx.client.trigger_topic(topic_id)
-                triggered_count += 1
-                if result.task_id:
-                    task_ids.append(result.task_id)
-            except Exception as e:
-                console.print(f"[red]Failed to trigger topic {topic_id}: {e}[/red]")
+        # Trigger user collection (single API call)
+        result = ctx.client.trigger_user(selected_user_id)
+        task_id = result.task_id
 
-        display_success(f"Digest collection triggered for {triggered_count} topic(s)")
-        if task_ids:
-            click.echo(f"Task IDs: {', '.join(task_ids)}")
-        click.echo(f"User ID: {selected_user.id}")
-
+        display_success(f"Digest collection triggered for user: {selected_user.name or selected_user.email}")
+        console.print(f"[dim]Topics: {result.topic_count}[/dim]")
+        console.print(f"[dim]Task ID: {task_id}[/dim]")
+        console.print(f"[dim]User ID: {selected_user_id}[/dim]")
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)

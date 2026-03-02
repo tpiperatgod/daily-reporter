@@ -257,6 +257,14 @@ class TriggerResponse(BaseModel):
     topic_id: Optional[str] = None
 
 
+class UserTriggerResponse(BaseModel):
+    """Response from user trigger endpoint."""
+    status: str
+    message: str
+    task_id: Optional[str] = None
+    user_id: UUID
+    topic_count: int
+
 # ============================================================================
 # List Response Wrapper
 # ============================================================================
