@@ -133,13 +133,12 @@ async def _collect_data_async(self, topic_id: str):
             source_ids = [raw_item.source_id for raw_item in raw_items]
             embedding_hashes_non_null = [h for h in embedding_hashes if h is not None]
 
-            # Batch check existing source_ids (1 query total)
+            # Batch check existing source_ids (1 query total - GLOBAL uniqueness)
             existing_source_ids = await batch_check_exists(
                 session,
                 Item,
                 Item.source_id,
                 source_ids,
-                additional_filters=[Item.topic_id == topic_id],
             )
 
             # Batch check existing embedding hashes (1 query total)
@@ -156,7 +155,16 @@ async def _collect_data_async(self, topic_id: str):
             )
 
             # Process each item with in-memory duplicate checking
+            seen_source_ids = set()  # Track source_ids within this batch
+
             for raw_item, embedding_hash in zip(raw_items, embedding_hashes):
+                # Check for intra-batch duplicate source_id
+                if raw_item.source_id in seen_source_ids:
+                    duplicates += 1
+                    logger.debug(f"Skipping intra-batch duplicate source_id: {raw_item.source_id}")
+                    continue
+                seen_source_ids.add(raw_item.source_id)
+
                 # Check for duplicate by source_id (in-memory)
                 if raw_item.source_id in existing_source_ids:
                     duplicates += 1
@@ -521,4 +529,351 @@ async def _notify_async(self, digest_id: str):
         return {"status": "error", "message": str(e)}
 
 
-__all__ = ["collect_data", "generate_digest", "notify"]
+# =============================================================================
+# User Pipeline Tasks
+# =============================================================================
+
+
+@celery_app.task(bind=True, name="app.workers.tasks.collect_user_topics", max_retries=3)
+def collect_user_topics(self, user_id: str):
+    """
+    Collect data from Twitter/X for all topics a user is subscribed to.
+
+    Args:
+        user_id: UUID of the user
+
+    Workflow:
+        1. Load user and their subscriptions
+        2. For each subscribed topic, collect items
+        3. Aggregate results
+        4. Chain to generate_user_digest
+    """
+    logger.info(f"Starting user topic collection for user {user_id}")
+    return asyncio.run(_collect_user_topics_async(self, user_id))
+
+
+async def _collect_user_topics_async(self, user_id: str):
+    """Async implementation of collect_user_topics task.
+    
+    Collects data from all topics a user is subscribed to.
+    """
+    from app.db.session import get_async_session_local
+    from app.db.utils import batch_check_exists
+    
+    try:
+        async with get_async_session_local()() as session:
+            # 1. Load user with subscriptions and topics
+            result = await session.execute(
+                select(User)
+                .options(selectinload(User.subscriptions).selectinload(Subscription.topic))
+                .where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                logger.error(f"User {user_id} not found")
+                return {"status": "error", "message": "User not found"}
+            
+            if not user.subscriptions:
+                logger.info(f"User {user_id} has no subscriptions")
+                return {
+                    "status": "success",
+                    "message": "No subscriptions",
+                    "user_id": user_id,
+                    "items_collected": 0,
+                }
+            
+            logger.info(
+                f"Collecting data for user {user_id} with {len(user.subscriptions)} subscriptions"
+            )
+            
+            # Track aggregated results
+            total_items_collected = 0
+            all_new_items = []
+            topics_processed = 0
+            min_item_created_at = None
+            max_item_created_at = None
+            
+            # Get provider once (shared across topics)
+            provider = get_provider()
+            
+            # 2. Process each subscription's topic
+            for subscription in user.subscriptions:
+                topic = subscription.topic
+                
+                if not topic:
+                    logger.warning(f"Subscription {subscription.id} has no topic")
+                    continue
+                
+                if not topic.is_enabled:
+                    logger.info(f"Topic {topic.name} is disabled, skipping")
+                    continue
+                
+                logger.info(
+                    f"Collecting data for topic: {topic.name}",
+                    extra={"topic_id": str(topic.id), "query": topic.query},
+                )
+                
+                # Calculate time window for this topic
+                end_date = datetime.now(UTC)
+                if topic.last_collection_timestamp:
+                    start_date = topic.last_collection_timestamp
+                else:
+                    start_date = end_date - timedelta(hours=24)
+                
+                logger.info(
+                    f"Time window: {start_date} to {end_date}",
+                    extra={"start": start_date.isoformat(), "end": end_date.isoformat()},
+                )
+                
+                # Fetch items from provider
+                fetch_kwargs = {
+                    "query": topic.query,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "max_items": 100,
+                }
+                
+                # Add since_id if available and provider supports it
+                if topic.last_tweet_id:
+                    sig = inspect.signature(provider.fetch)
+                    if "since_id" in sig.parameters:
+                        fetch_kwargs["since_id"] = topic.last_tweet_id
+                        logger.info(f"Using since_id: {topic.last_tweet_id}")
+                
+                try:
+                    raw_items = await provider.fetch(**fetch_kwargs)
+                except Exception as e:
+                    logger.error(f"Failed to fetch items for topic {topic.name}: {e}")
+                    continue
+                
+                logger.info(f"Fetched {len(raw_items)} items from provider for topic {topic.name}")
+                
+                if not raw_items:
+                    logger.info(f"No items fetched for topic {topic.name}")
+                    topic.last_collection_timestamp = end_date
+                    await session.commit()
+                    topics_processed += 1
+                    continue
+                
+                # 3. Process items with deduplication using batch embeddings
+                embedding_provider = get_embedding_provider()
+                llm_client = LLMClient(embedding_provider=embedding_provider)
+                new_items = []
+                duplicates = 0
+                
+                # Generate embeddings in batch for all items
+                texts = [raw_item.text for raw_item in raw_items]
+                logger.info(f"Generating embeddings for {len(texts)} items in batch")
+                
+                try:
+                    embedding_hashes = await llm_client.generate_embedding_hashes_batch(texts)
+                except Exception as e:
+                    logger.error(f"Batch embedding generation failed: {e}")
+                    embedding_hashes = [None] * len(texts)
+                
+                # Batch check for existing items (fixes N+1 query problem)
+                source_ids = [raw_item.source_id for raw_item in raw_items]
+                embedding_hashes_non_null = [h for h in embedding_hashes if h is not None]
+                
+                # Batch check existing source_ids (GLOBAL uniqueness)
+                existing_source_ids = await batch_check_exists(
+                    session,
+                    Item,
+                    Item.source_id,
+                    source_ids,
+                )
+                
+                # Batch check existing embedding hashes (topic-scoped)
+                existing_hashes = (
+                    await batch_check_exists(
+                        session,
+                        Item,
+                        Item.embedding_hash,
+                        embedding_hashes_non_null,
+                        additional_filters=[Item.topic_id == topic.id],
+                    )
+                    if embedding_hashes_non_null
+                    else set()
+                )
+                
+                # Process each item with in-memory duplicate checking
+                seen_source_ids = set()
+                
+                for raw_item, embedding_hash in zip(raw_items, embedding_hashes):
+                    # Check for intra-batch duplicate source_id
+                    if raw_item.source_id in seen_source_ids:
+                        duplicates += 1
+                        logger.debug(f"Skipping intra-batch duplicate source_id: {raw_item.source_id}")
+                        continue
+                    seen_source_ids.add(raw_item.source_id)
+                    
+                    # Check for duplicate by source_id (in-memory)
+                    if raw_item.source_id in existing_source_ids:
+                        duplicates += 1
+                        continue
+                    
+                    # Also check by embedding_hash if available
+                    if embedding_hash and embedding_hash in existing_hashes:
+                        duplicates += 1
+                        logger.debug(f"Duplicate found via embedding hash: {raw_item.source_id}")
+                        continue
+                    
+                    # Create new item
+                    item = Item(
+                        topic_id=topic.id,
+                        source_id=raw_item.source_id,
+                        author=raw_item.author,
+                        text=raw_item.text,
+                        url=raw_item.url,
+                        created_at=raw_item.created_at,
+                        collected_at=datetime.now(UTC),
+                        media_urls=raw_item.media_urls if raw_item.media_urls else None,
+                        metrics=raw_item.metrics if raw_item.metrics else None,
+                        embedding_hash=embedding_hash,
+                    )
+                    new_items.append(item)
+                
+                # 4. Insert new items
+                if new_items:
+                    session.add_all(new_items)
+                    await session.commit()
+                    logger.info(f"Inserted {len(new_items)} new items for topic {topic.name}")
+                    
+                    # Track for aggregated time window
+                    for item in new_items:
+                        if min_item_created_at is None or item.created_at < min_item_created_at:
+                            min_item_created_at = item.created_at
+                        if max_item_created_at is None or item.created_at > max_item_created_at:
+                            max_item_created_at = item.created_at
+                    
+                    all_new_items.extend(new_items)
+                    total_items_collected += len(new_items)
+                else:
+                    logger.info(f"No new items after deduplication for topic {topic.name}")
+                
+                # 5. Update last_collection_timestamp and last_tweet_id
+                topic.last_collection_timestamp = end_date
+                
+                # Track highest tweet ID
+                if raw_items:
+                    max_tweet_id = None
+                    for raw_item in raw_items:
+                        try:
+                            current_id = int(raw_item.source_id)
+                            if max_tweet_id is None or current_id > max_tweet_id:
+                                max_tweet_id = current_id
+                        except ValueError:
+                            continue
+                    
+                    if max_tweet_id is not None:
+                        topic.last_tweet_id = str(max_tweet_id)
+                        logger.info(f"Updated last_tweet_id to: {topic.last_tweet_id}")
+                
+                await session.commit()
+                await llm_client.close()
+                topics_processed += 1
+            
+            # 6. Chain to generate_user_digest if we have new items
+            if all_new_items:
+                logger.info("Chaining to generate_user_digest task")
+                generate_user_digest.delay(
+                    user_id=user_id,
+                    window_start=min_item_created_at.isoformat(),
+                    window_end=max_item_created_at.isoformat(),
+                )
+            
+            return {
+                "status": "success",
+                "message": f"Collected {total_items_collected} items from {topics_processed} topics",
+                "user_id": user_id,
+                "items_collected": total_items_collected,
+                "topics_processed": topics_processed,
+            }
+    
+    except Exception as e:
+        logger.error(f"Error in collect_user_topics for user {user_id}: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "user_id": user_id,
+        }
+
+
+@celery_app.task(bind=True, name="app.workers.tasks.generate_user_digest", max_retries=1)
+def generate_user_digest(self, user_id: str, window_start: str, window_end: str):
+    """
+    Generate a personalized digest for a user from all their subscribed topics.
+
+    Args:
+        user_id: UUID of the user
+        window_start: Start of time window (ISO format string)
+        window_end: End of time window (ISO format string)
+
+    Workflow:
+        1. Load user and their subscriptions
+        2. Fetch items from all subscribed topics in time window
+        3. Call LLM to generate personalized digest
+        4. Store user-specific digest
+        5. Chain to notify_user_digest
+    """
+    logger.info(
+        f"Generating user digest for user {user_id}",
+        extra={"window_start": window_start, "window_end": window_end},
+    )
+    return asyncio.run(_generate_user_digest_async(self, user_id, window_start, window_end))
+
+
+async def _generate_user_digest_async(self, user_id: str, window_start: str, window_end: str):
+    """Async implementation of generate_user_digest task."""
+    # Placeholder implementation
+    logger.info(f"[PLACEHOLDER] generate_user_digest_async for user {user_id}")
+    return {
+        "status": "success",
+        "message": "User digest generation placeholder",
+        "user_id": user_id,
+        "window_start": window_start,
+        "window_end": window_end,
+    }
+
+
+@celery_app.task(bind=True, name="app.workers.tasks.notify_user_digest", max_retries=2)
+def notify_user_digest(self, user_digest_id: str):
+    """
+    Send notification for a user-specific digest.
+
+    Args:
+        user_digest_id: UUID of the user digest
+
+    Workflow:
+        1. Load user digest and user
+        2. Determine notification channels from user preferences
+        3. Send to enabled channels (feishu/email)
+        4. Update delivery status
+    """
+    logger.info(f"Starting user digest notification for digest {user_digest_id}")
+    return asyncio.run(_notify_user_digest_async(self, user_digest_id))
+
+
+async def _notify_user_digest_async(self, user_digest_id: str):
+    """Async implementation of notify_user_digest task."""
+    # Placeholder implementation
+    logger.info(f"[PLACEHOLDER] notify_user_digest_async for digest {user_digest_id}")
+    return {
+        "status": "success",
+        "message": "User digest notification placeholder",
+        "user_digest_id": user_digest_id,
+    }
+
+
+__all__ = [
+    "collect_data",
+    "generate_digest",
+    "notify",
+    # User pipeline tasks
+    "collect_user_topics",
+    "generate_user_digest",
+    "notify_user_digest",
+]
+
+

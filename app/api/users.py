@@ -9,13 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db.models import User, Subscription
 from app.api.schemas import (
-    UserCreate,
-    UserResponse,
-    UserWithSubscriptions,
+UserCreate,
+UserResponse,
+UserWithSubscriptions,
     PaginatedResponse,
+    UserTriggerResponse,
 )
 from app.core.logging import get_logger
 from app.db.utils import get_entity_or_404, paginate_query
+from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
 
@@ -157,3 +159,56 @@ async def update_user(user_id: UUID, user_data: UserCreate, db: AsyncSession = D
 
     logger.info(f"User updated: {user_id}")
     return user
+
+
+@router.post("/{user_id}/trigger", response_model=UserTriggerResponse)
+async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Manually trigger data collection for all topics subscribed by a user.
+
+    This is the NEW user-scoped trigger endpoint for aggregated digest generation.
+    It collects data from all topics the user is subscribed to and generates
+    a single aggregated digest.
+
+    Args:
+        user_id: User UUID
+        db: Database session
+
+    Returns:
+        UserTriggerResponse with task ID and topic count
+
+    Raises:
+        HTTPException: If user not found or has no subscriptions
+    """
+    user = await get_entity_or_404(
+        db,
+        User,
+        user_id,
+        eager_load=[selectinload(User.subscriptions)],
+    )
+
+    # Check if user has any subscriptions
+    if not user.subscriptions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no topic subscriptions",
+        )
+
+    # Trigger Celery task for user-scoped collection
+    task = celery_app.send_task(
+        "app.workers.tasks.collect_user_topics",
+        args=[str(user_id)],
+    )
+
+    logger.info(
+        f"Manually triggered user collection for user {user_id}",
+        extra={"task_id": task.id, "topic_count": len(user.subscriptions)},
+    )
+
+    return UserTriggerResponse(
+        status="success",
+        message="User topic collection triggered",
+        task_id=task.id,
+        user_id=user_id,
+        topic_count=len(user.subscriptions),
+    )
