@@ -39,6 +39,7 @@ X-News-Digest is an automated Twitter/X news digest system that collects tweets 
 
 ### Data Pipeline Flow
 
+#### Topic-Scoped Pipeline (Legacy)
 ```
 Topic (cron schedule) → Celery Beat → collect_data task
   ↓
@@ -52,6 +53,26 @@ generate_digest task (LLM summarization)
   ↓
 send_notifications task → Feishu/Email delivery
 ```
+
+#### User-Scoped Pipeline (Recommended)
+```
+User (cron schedule) → Celery Beat → collect_user_topics task
+  ↓
+For each subscribed topic:
+  TwitterAPIAdapter.fetch_items(since_id=topic.last_tweet_id)
+  ↓
+Aggregate all items from all topics
+  ↓
+generate_user_digest task (LLM summarization of aggregated items)
+  ↓
+notify_user_digest task → Feishu/Email delivery
+```
+
+**Key Differences:**
+- User-scoped pipeline generates a single aggregated digest from all subscribed topics
+- Topic-scoped pipeline generates separate digests per topic
+- User-scoped is triggered via `POST /users/{user_id}/trigger`
+- Topic-scoped is triggered via `POST /topics/{topic_id}/trigger` (deprecated)
 
 ### Key Database Models (`app/db/models.py`)
 

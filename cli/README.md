@@ -256,17 +256,22 @@ xndctl sub delete --id <uuid> -y  # Skip confirmation
 
 ### Trigger Commands
 
-#### Trigger Topic Collection
+#### Trigger User Digest Collection
 
 ```bash
 xndctl trigger -p
 ```
 
 This will:
-1. Show list of available topics
-2. Trigger collection for selected topic
-3. Display task ID for tracking
+1. Show list of available users
+2. Show user's subscriptions and topics
+3. Trigger aggregated collection for all subscribed topics
+4. Display single task ID for the user digest pipeline
 
+The triggered pipeline:
+- Collects data from all topics the user is subscribed to
+- Generates a single aggregated digest
+- Sends notifications via configured channels (Feishu/Email)
 ### Notify Commands
 
 #### Send Digest Notification
