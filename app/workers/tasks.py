@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.workers.celery_app import celery_app
 from app.core.logging import get_logger
-from app.db.models import Topic, Item, Digest, Subscription, User
+from app.db.models import Topic, Item, Digest, Subscription, User, UserDigest
 from app.services.provider.factory import get_provider
 from app.services.llm.client import LLMClient
 from app.services.embedding.factory import get_embedding_provider
@@ -826,15 +826,159 @@ def generate_user_digest(self, user_id: str, window_start: str, window_end: str)
 
 async def _generate_user_digest_async(self, user_id: str, window_start: str, window_end: str):
     """Async implementation of generate_user_digest task."""
-    # Placeholder implementation
-    logger.info(f"[PLACEHOLDER] generate_user_digest_async for user {user_id}")
-    return {
-        "status": "success",
-        "message": "User digest generation placeholder",
-        "user_id": user_id,
-        "window_start": window_start,
-        "window_end": window_end,
-    }
+    from app.db.session import get_async_session_local
+
+    try:
+        async with get_async_session_local()() as session:
+            # 1. Parse time window
+            window_start_dt = datetime.fromisoformat(window_start)
+            window_end_dt = datetime.fromisoformat(window_end)
+
+            # 2. Load user with subscriptions
+            result = await session.execute(
+                select(User)
+                .options(selectinload(User.subscriptions).selectinload(Subscription.topic))
+                .where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+
+            if not user:
+                logger.error(f"User {user_id} not found")
+                return {"status": "error", "message": "User not found", "user_id": user_id}
+
+            if not user.subscriptions:
+                logger.info(f"User {user_id} has no subscriptions")
+                return {
+                    "status": "success",
+                    "message": "User has no subscriptions",
+                    "user_id": user_id,
+                }
+
+            # 3. Get topic_ids from subscriptions
+            topic_ids = [sub.topic_id for sub in user.subscriptions if sub.topic]
+
+            if not topic_ids:
+                logger.info(f"No active topics for user {user_id}")
+                return {
+                    "status": "success",
+                    "message": "No active topics for user",
+                    "user_id": user_id,
+                }
+
+            # 4. Query items for all topics in time window
+            items_result = await session.execute(
+                select(Item)
+                .where(Item.topic_id.in_(topic_ids))
+                .where(Item.created_at >= window_start_dt)
+                .where(Item.created_at <= window_end_dt)
+                .order_by(Item.created_at.desc())
+            )
+            items = items_result.scalars().all()
+
+            # 5. If no items, return early
+            if not items:
+                logger.info(f"No items in time window for user {user_id}")
+                return {
+                    "status": "success",
+                    "message": "No items in time window",
+                    "user_id": user_id,
+                }
+
+            logger.info(f"Found {len(items)} items for user digest")
+
+            # 6. Group items by topic_id
+            from collections import defaultdict
+
+            items_by_topic = defaultdict(list)
+            for item in items:
+                items_by_topic[item.topic_id].append(item)
+
+            # 7. Load topic names
+            topic_names = {}
+            for sub in user.subscriptions:
+                if sub.topic:
+                    topic_names[sub.topic_id] = sub.topic.name
+
+            # Convert items to dicts for LLM
+            items_dict = [
+                {
+                    "id": str(item.id),
+                    "text": item.text,
+                    "author": item.author,
+                    "url": item.url,
+                    "created_at": item.created_at.isoformat(),
+                    "metrics": item.metrics or {},
+                    "topic_name": topic_names.get(item.topic_id, "Unknown"),
+                }
+                for item in items
+            ]
+
+            # 8. Generate digest using LLM
+            embedding_provider = get_embedding_provider()
+            llm_client = LLMClient(embedding_provider=embedding_provider)
+            digest_result = await llm_client.generate_digest(
+                topic="Aggregated Topics",
+                items=items_dict,
+                time_window_start=window_start_dt,
+                time_window_end=window_end_dt,
+            )
+
+            # 9. Render markdown
+            rendered_content = render_markdown_digest(
+                topic_name="User Digest",
+                digest_result=digest_result,
+                time_window_start=window_start_dt,
+                time_window_end=window_end_dt,
+            )
+
+            # 10. Create UserDigest record
+            user_digest = UserDigest(
+                user_id=user_id,
+                topic_ids=[str(tid) for tid in topic_ids],
+                time_window_start=window_start_dt,
+                time_window_end=window_end_dt,
+                summary_json=digest_result.model_dump(),
+                rendered_content=rendered_content,
+            )
+            session.add(user_digest)
+            await session.flush()  # Get the digest ID
+
+            logger.info(
+                f"Created user digest {user_digest.id}",
+                extra={
+                    "user_digest_id": str(user_digest.id),
+                    "highlights": len(digest_result.highlights),
+                    "items_analyzed": len(items),
+                    "topics_included": len(topic_ids),
+                },
+            )
+
+            await session.commit()
+            await llm_client.close()
+
+            # 11. Chain to notify_user_digest
+            notify_user_digest.delay(str(user_digest.id))
+
+            # 12. Return result
+            return {
+                "status": "success",
+                "message": "User digest generated",
+                "user_id": user_id,
+                "user_digest_id": str(user_digest.id),
+                "items_analyzed": len(items),
+                "topics_included": len(topic_ids),
+            }
+
+    except Exception as e:
+        logger.error(f"User digest generation failed: {e}", exc_info=True)
+
+        # Retry once
+        if self.request.retries < self.max_retries:
+            countdown = 30  # 30 seconds
+            logger.info(f"Retrying in {countdown} seconds...")
+            raise self.retry(exc=e, countdown=countdown)
+
+        return {"status": "error", "message": str(e), "user_id": user_id}
 
 
 @celery_app.task(bind=True, name="app.workers.tasks.notify_user_digest", max_retries=2)
@@ -856,14 +1000,144 @@ def notify_user_digest(self, user_digest_id: str):
 
 
 async def _notify_user_digest_async(self, user_digest_id: str):
-    """Async implementation of notify_user_digest task."""
-    # Placeholder implementation
-    logger.info(f"[PLACEHOLDER] notify_user_digest_async for digest {user_digest_id}")
-    return {
-        "status": "success",
-        "message": "User digest notification placeholder",
-        "user_digest_id": user_digest_id,
-    }
+    """Async implementation of notify_user_digest task.
+
+    Sends notification for a user digest via configured channels (Feishu/Email)
+    and creates delivery records for tracking.
+    """
+    from app.db.session import get_async_session_local
+    from app.db.models import UserDigest, Delivery
+    from app.services.notifier.feishu import FeishuNotifier
+    from app.services.notifier.email import EmailNotifier
+    from app.services.llm.client import DigestResult
+    from app.core.constants import NotificationChannel, DeliveryStatus
+    from app.core.config import settings
+
+    try:
+        async with get_async_session_local()() as session:
+            # 1. Load UserDigest with User
+            result = await session.execute(
+                select(UserDigest)
+                .options(selectinload(UserDigest.user))
+                .where(UserDigest.id == user_digest_id)
+            )
+            user_digest = result.scalar_one_or_none()
+
+            if not user_digest:
+                logger.error(f"UserDigest {user_digest_id} not found")
+                return {"status": "error", "message": "UserDigest not found"}
+
+            user = user_digest.user
+            channels_used = []
+            successful = 0
+            failed = 0
+
+            # 2. Parse DigestResult from summary_json
+            try:
+                digest_result = DigestResult(**user_digest.summary_json)
+            except Exception as e:
+                logger.error(f"Failed to parse summary_json: {e}")
+                return {"status": "error", "message": f"Invalid summary_json: {e}"}
+
+            # 3. Send via Feishu if configured
+            if user.feishu_webhook_url:
+                delivery = Delivery(
+                    digest_id=None,  # UserDigest, not regular Digest
+                    user_id=str(user.id),
+                    channel=NotificationChannel.FEISHU,
+                    status=DeliveryStatus.PENDING,
+                )
+                session.add(delivery)
+                await session.flush()
+
+                try:
+                    feishu_notifier = FeishuNotifier(log_only=False)
+                    await feishu_notifier.send(
+                        webhook_url=user.feishu_webhook_url,
+                        digest_result=digest_result,
+                        topic_name="User Digest",
+                        webhook_secret=user.feishu_webhook_secret,
+                    )
+                    await feishu_notifier.close()
+
+                    delivery.status = DeliveryStatus.SUCCESS
+                    delivery.sent_at = datetime.now(UTC)
+                    channels_used.append(NotificationChannel.FEISHU)
+                    successful += 1
+
+                    logger.info(
+                        f"Sent user digest {user_digest_id} via Feishu",
+                        extra={
+                            "user_id": str(user.id),
+                            "delivery_id": str(delivery.id),
+                        },
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send via Feishu: {e}")
+                    delivery.status = DeliveryStatus.FAILED
+                    delivery.error_msg = str(e)
+                    delivery.retry_count += 1
+                    failed += 1
+
+            # 4. Send via Email if configured
+            if user.email:
+                delivery = Delivery(
+                    digest_id=None,  # UserDigest, not regular Digest
+                    user_id=str(user.id),
+                    channel=NotificationChannel.EMAIL,
+                    status=DeliveryStatus.PENDING,
+                )
+                session.add(delivery)
+                await session.flush()
+
+                try:
+                    email_notifier = EmailNotifier(log_only=settings.EMAIL_LOG_ONLY)
+                    await email_notifier.send(
+                        to_email=user.email,
+                        subject="Your Personalized Digest",
+                        content=user_digest.rendered_content,
+                    )
+
+                    delivery.status = DeliveryStatus.SUCCESS
+                    delivery.sent_at = datetime.now(UTC)
+                    channels_used.append(NotificationChannel.EMAIL)
+                    successful += 1
+
+                    logger.info(
+                        f"Sent user digest {user_digest_id} via Email",
+                        extra={
+                            "user_id": str(user.id),
+                            "delivery_id": str(delivery.id),
+                        },
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send via Email: {e}")
+                    delivery.status = DeliveryStatus.FAILED
+                    delivery.error_msg = str(e)
+                    delivery.retry_count += 1
+                    failed += 1
+
+            await session.commit()
+
+            return {
+                "status": "success",
+                "message": "User digest notifications sent",
+                "user_digest_id": user_digest_id,
+                "channels": channels_used,
+                "successful": successful,
+                "failed": failed,
+            }
+
+    except Exception as e:
+        logger.error(f"User digest notification task failed: {e}", exc_info=True)
+
+        # Retry with exponential backoff
+        if self.request.retries < self.max_retries:
+            countdown = 60 * (self.request.retries + 1)
+            logger.info(f"Retrying in {countdown} seconds...")
+            raise self.retry(exc=e, countdown=countdown)
+
+        return {"status": "error", "message": str(e)}
 
 
 __all__ = [
