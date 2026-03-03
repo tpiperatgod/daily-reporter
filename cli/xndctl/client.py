@@ -1,14 +1,13 @@
 """HTTP API client for xndctl CLI."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 import httpx
 from xndctl.config import Config
 from xndctl.schemas import (
-    UserCreate, UserUpdate, UserResponse, UserWithSubscriptions,
+    UserCreate, UserUpdate, UserResponse, UserWithTopics,
     TopicCreate, TopicUpdate, TopicResponse, TopicWithStats,
-    SubscriptionCreate, SubscriptionUpdate, SubscriptionResponse, SubscriptionWithDetails,
-    DigestResponse, DigestWithDetails,
+    DigestWithDetails,
     TriggerResponse, UserTriggerResponse, SendDigestResponse,
     PaginatedResponse,
 )
@@ -96,16 +95,14 @@ class APIClient:
                 params={"limit": limit, "offset": offset}
             )
             data = self._handle_response(response)
-            data["items"] = [UserWithSubscriptions(**item) for item in data["items"]]
+            data["items"] = [UserWithTopics(**item) for item in data["items"]]
             return PaginatedResponse(**data)
-
-    def get_user(self, user_id: UUID) -> UserWithSubscriptions:
+    def get_user(self, user_id: UUID) -> UserWithTopics:
         """Get user by ID."""
         with self._get_client() as client:
             response = client.get(f"{self.base_url}/api/v1/users/{user_id}")
             data = self._handle_response(response)
-            return UserWithSubscriptions(**data)
-
+            return UserWithTopics(**data)
     def update_user(self, user_id: UUID, user: UserUpdate) -> UserResponse:
         """Update user."""
         with self._get_client() as client:
@@ -122,22 +119,20 @@ class APIClient:
             response = client.delete(f"{self.base_url}/api/v1/users/{user_id}")
             self._handle_response(response)
 
-    def find_user_by_name(self, name: str) -> Optional[UserWithSubscriptions]:
+    def find_user_by_name(self, name: str) -> Optional[UserWithTopics]:
         """Find user by name (returns first match)."""
         users = self.list_users(limit=1000)  # Get all users
         for user in users.items:
             if user.name and user.name.lower() == name.lower():
                 return user
         return None
-
-    def find_user_by_email(self, email: str) -> Optional[UserWithSubscriptions]:
+    def find_user_by_email(self, email: str) -> Optional[UserWithTopics]:
         """Find user by email (returns first match)."""
         users = self.list_users(limit=1000)  # Get all users
         for user in users.items:
             if user.email.lower() == email.lower():
                 return user
         return None
-
     # ========================================================================
     # Topic Operations
     # ========================================================================
@@ -203,10 +198,10 @@ class APIClient:
 
     def trigger_user(self, user_id: UUID) -> UserTriggerResponse:
         """Trigger data collection for all topics subscribed by a user.
-        
+
         Args:
             user_id: UUID of the user
-            
+
         Returns:
             UserTriggerResponse with task ID and topic count
         """
@@ -214,54 +209,6 @@ class APIClient:
             response = client.post(f"{self.base_url}/api/v1/users/{user_id}/trigger")
             data = self._handle_response(response)
             return UserTriggerResponse(**data)
-    # ========================================================================
-    # Subscription Operations
-    # ========================================================================
-
-    def create_subscription(self, subscription: SubscriptionCreate) -> SubscriptionResponse:
-        """Create a new subscription."""
-        with self._get_client() as client:
-            response = client.post(
-                f"{self.base_url}/api/v1/subscriptions",
-                json=subscription.model_dump(mode='json')
-            )
-            data = self._handle_response(response)
-            return SubscriptionResponse(**data)
-
-    def list_subscriptions(self, limit: int = 100, offset: int = 0) -> PaginatedResponse:
-        """List subscriptions with pagination."""
-        with self._get_client() as client:
-            response = client.get(
-                f"{self.base_url}/api/v1/subscriptions",
-                params={"limit": limit, "offset": offset}
-            )
-            data = self._handle_response(response)
-            data["items"] = [SubscriptionWithDetails(**item) for item in data["items"]]
-            return PaginatedResponse(**data)
-
-    def get_subscription(self, subscription_id: UUID) -> SubscriptionWithDetails:
-        """Get subscription by ID."""
-        with self._get_client() as client:
-            response = client.get(f"{self.base_url}/api/v1/subscriptions/{subscription_id}")
-            data = self._handle_response(response)
-            return SubscriptionWithDetails(**data)
-
-    def update_subscription(self, subscription_id: UUID, subscription: SubscriptionUpdate) -> SubscriptionResponse:
-        """Update subscription."""
-        with self._get_client() as client:
-            response = client.patch(
-                f"{self.base_url}/api/v1/subscriptions/{subscription_id}",
-                json=subscription.model_dump(exclude_none=True)
-            )
-            data = self._handle_response(response)
-            return SubscriptionResponse(**data)
-
-    def delete_subscription(self, subscription_id: UUID) -> None:
-        """Delete subscription."""
-        with self._get_client() as client:
-            response = client.delete(f"{self.base_url}/api/v1/subscriptions/{subscription_id}")
-            self._handle_response(response)
-
     # ========================================================================
     # Digest Operations
     # ========================================================================
@@ -284,12 +231,20 @@ class APIClient:
             data = self._handle_response(response)
             return DigestWithDetails(**data)
 
-    def send_digest(self, digest_id: UUID, subscription_id: UUID) -> SendDigestResponse:
-        """Manually send digest to a subscription."""
+    def send_digest(self, digest_id: UUID, user_id: UUID) -> SendDigestResponse:
+        """Manually send digest to a user.
+
+        Args:
+            digest_id: UUID of the digest to send
+            user_id: UUID of the user to send to
+
+        Returns:
+            SendDigestResponse with delivery statistics
+        """
         with self._get_client() as client:
             response = client.post(
                 f"{self.base_url}/api/v1/digests/{digest_id}/send",
-                json={"subscription_id": str(subscription_id)}
+                json={"user_id": str(user_id)}
             )
             data = self._handle_response(response)
             return SendDigestResponse(**data)

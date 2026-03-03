@@ -84,28 +84,24 @@ xndctl user create -p
 # 创建 Topic
 xndctl topic create -p
 
-# 创建订阅
-xndctl sub create -p
-
-# 触发采集
+# 触发用户级采集
 xndctl trigger -p
-```
 
 ## 核心特性
 
-### 1. 用户级聚合触发（推荐）
+### 1. 用户级聚合触发
 
-系统支持**用户级聚合触发**，一次触发收集用户所有订阅 Topic 的数据并生成单一聚合摘要：
+系统支持**用户级聚合触发**，一次触发收集用户所有 Topic 的数据并生成单一聚合摘要：
 
 ```bash
-# 触发用户所有订阅的采集
+# 触发用户所有 Topic 的采集
 POST /api/v1/users/{user_id}/trigger
 ```
 
 **流程**：
-1. 收集用户所有订阅 Topic 的数据
+1. 收集用户 `topics` 列表中的所有 Topic 数据
 2. 生成单一聚合摘要
-3. 通过配置的渠道推送通知
+3. 根据用户级通知渠道设置（`enable_feishu`, `enable_email`）推送通知
 
 ### 2. 增量采集（since_id）
 
@@ -134,10 +130,8 @@ POST /api/v1/users/{user_id}/trigger
 | | `POST /api/v1/users/{id}/trigger` | **触发用户摘要** |
 | Topics | `POST /api/v1/topics` | 创建 Topic |
 | | `GET /api/v1/topics` | 列出 Topics |
-| Subscriptions | `POST /api/v1/subscriptions` | 创建订阅 |
 | Digests | `GET /api/v1/digests` | 列出摘要 |
-| | `POST /api/v1/digests/{id}/send` | 手动发送 |
-
+| | `POST /api/v1/digests/{id}/send` | 手动发送（需 `user_id`） |
 **完整 API 文档**：运行后访问 `http://localhost:8000/docs`
 
 ## 常用命令
@@ -288,3 +282,38 @@ MIT License
 - [FastAPI](https://fastapi.tiangolo.com) - Web 框架
 - [Celery](https://docs.celeryproject.org) - 任务队列
 
+## Breaking Changes
+
+### v2.0 - Subscription System Removal
+
+**Migration Date**: 2026-03-03
+
+The subscription system has been completely removed and replaced with a simpler user-topics relationship:
+
+#### API Changes
+
+- **Removed**: All `/api/v1/subscriptions` endpoints
+- **Changed**: `POST /api/v1/users` now accepts `topics` (UUID array), `enable_feishu`, `enable_email`
+- **Changed**: `POST /api/v1/digests/{id}/send` now requires `user_id` instead of `subscription_id`
+- **Deprecated**: Topic-scoped notification pipeline (`notify` task is now a stub)
+
+#### CLI Changes
+
+- **Removed**: `xndctl sub` command group entirely
+- **Changed**: Workflow now uses `user.topics` to associate topics with users
+- **Changed**: Notification channels configured at user level, not per subscription
+
+#### Data Model Changes
+
+- **Removed**: `subscriptions` table (dropped from database)
+- **Added**: `users.topics` JSONB array for topic associations
+- **Added**: `users.enable_feishu` and `users.enable_email` boolean flags
+- **Migration**: Existing subscription data migrated to `users.topics` with OR-aggregated channel flags
+
+#### Migration Path
+
+1. **Before**: User → Subscription → Topic (many-to-many with channel preferences)
+2. **After**: User → `topics` array + user-level channel flags
+3. **Impact**: Simpler mental model - ALL topics receive notifications via ALL enabled channels
+
+For detailed migration implementation, see `alembic/versions/20260303_0914_a5e1d178682a_users_topics_redesign.py`

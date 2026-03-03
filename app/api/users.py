@@ -3,7 +3,7 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, or_
-from sqlalchemy.orm import selectinload
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -53,6 +53,9 @@ async def create_user(user_data: UserCreate, db: AsyncSession = Depends(get_db))
         email=user_data.email,
         feishu_webhook_url=user_data.feishu_webhook_url,
         feishu_webhook_secret=user_data.feishu_webhook_secret,
+        topics=user_data.topics,
+        enable_feishu=user_data.enable_feishu,
+        enable_email=user_data.enable_email,
     )
     db.add(user)
     await db.commit()
@@ -79,7 +82,7 @@ async def list_users(
         db: Database session
 
     Returns:
-        Paginated list of users with subscriptions
+        Paginated list of users with topics
     """
     query = select(User)
 
@@ -102,14 +105,14 @@ async def list_users(
 @router.get("/{user_id}", response_model=UserWithTopics)
 async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
     """
-    Get user by ID with subscriptions.
+    Get user by ID with topics.
 
     Args:
         user_id: User UUID
         db: Database session
 
     Returns:
-        User with subscriptions
+        User with topics
 
     Raises:
         HTTPException: If user not found
@@ -153,6 +156,9 @@ async def update_user(user_id: UUID, user_data: UserCreate, db: AsyncSession = D
     user.name = user_data.name
     user.feishu_webhook_url = user_data.feishu_webhook_url
     user.feishu_webhook_secret = user_data.feishu_webhook_secret
+    user.topics = user_data.topics
+    user.enable_feishu = user_data.enable_feishu
+    user.enable_email = user_data.enable_email
 
     await db.commit()
     await db.refresh(user)
@@ -178,7 +184,7 @@ async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_
         UserTriggerResponse with task ID and topic count
 
     Raises:
-        HTTPException: If user not found or has no subscriptions
+        HTTPException: If user not found or has no topics
     """
     user = await get_entity_or_404(
         db,

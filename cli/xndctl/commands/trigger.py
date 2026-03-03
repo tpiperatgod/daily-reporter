@@ -2,22 +2,35 @@
 
 import click
 from uuid import UUID
-from xndctl.cli import pass_context, Context
+from typing import List, Optional
+from xndctl.context import pass_context, Context
 from xndctl.utils import handle_error, display_success, display_warning, display_info, console
-from xndctl.prompts.subscription import prompt_select_user
+from xndctl.schemas import UserWithTopics
+
+
+def prompt_select_user(users: List[UserWithTopics]) -> Optional[UUID]:
+    click.echo()
+    console.print("[bold]Select User:[/bold]")
+    for i, user in enumerate(users, 1):
+        display_name = user.name or "(no name)"
+        click.echo(f"  {i}. {display_name} ({user.email})")
+
+    while True:
+        try:
+            user_input = click.prompt("\nSelect user (number, 0 to cancel)", type=int)
+            if user_input == 0:
+                return None
+            if 1 <= user_input <= len(users):
+                return users[user_input - 1].id
+            console.print(f"[red]Invalid selection. Choose 0-{len(users)}[/red]")
+        except Exception:
+            console.print(f"[red]Invalid input. Enter a number 0-{len(users)}[/red]")
 
 
 @click.command(name="trigger")
 @click.option("-p", "--prompt", is_flag=True, required=True, help="Interactive mode (required)")
 @pass_context
 def trigger(ctx: Context, prompt: bool):
-    """Manually trigger digest collection for a user (interactive only).
-
-    This command triggers the full digest pipeline for a user:
-    1. Collects data from all topics associated with the user
-    2. Generates an aggregated digest
-    3. Sends notifications via configured channels (Feishu/Email)
-    """
     try:
         users_result = ctx.client.list_users(limit=1000)
 
@@ -35,28 +48,25 @@ def trigger(ctx: Context, prompt: bool):
 
         selected_user = ctx.client.get_user(selected_user_id)
 
-        # FIX: Use subscriptions instead of topics
-        if not selected_user.subscriptions or len(selected_user.subscriptions) == 0:
+        if not selected_user.topics or len(selected_user.topics) == 0:
             console.print(
-                f"[yellow]Warning:[/yellow] User '{selected_user.name or selected_user.email}' has no subscriptions."
+                f"[yellow]Warning:[/yellow] User '{selected_user.name or selected_user.email}' has no topics."
             )
-            console.print("Create subscriptions to link this user to topics first.")
+            console.print("Add topics to this user first.")
             return
 
         console.print(f"[bold]User: {selected_user.name or selected_user.email}[/bold]")
-        console.print(f"[dim]Subscriptions: {len(selected_user.subscriptions)}[/dim]")
+        console.print(f"[dim]Topics: {len(selected_user.topics)}[/dim]")
         click.echo()
 
-        # FIX: Iterate subscriptions to get topics (already loaded, no extra API calls)
         topics_info = []
-        topic_ids = []
-        for sub in selected_user.subscriptions:
-            if sub.topic:
-                topic_ids.append(sub.topic.id)
-                status = "[green]enabled[/green]" if sub.topic.is_enabled else "[red]disabled[/red]"
-                topics_info.append(f"  - {sub.topic.name} ({status})")
-            else:
-                topics_info.append(f"  - {sub.topic_id} ([yellow]topic not loaded[/yellow])")
+        for topic_id_str in selected_user.topics:
+            try:
+                topic = ctx.client.get_topic(UUID(topic_id_str))
+                status = "[green]enabled[/green]" if topic.is_enabled else "[red]disabled[/red]"
+                topics_info.append(f"  - {topic.name} ({status})")
+            except Exception:
+                topics_info.append(f"  - {topic_id_str} ([yellow]topic not found[/yellow])")
 
         console.print("[bold]Topics to collect:[/bold]")
         for info in topics_info:
@@ -69,7 +79,6 @@ def trigger(ctx: Context, prompt: bool):
 
         display_info(f"Triggering digest collection for user: {selected_user.name or selected_user.email}")
 
-        # Trigger user collection (single API call)
         result = ctx.client.trigger_user(selected_user_id)
         task_id = result.task_id
 

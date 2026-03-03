@@ -146,9 +146,6 @@ class TopicWithStats(TopicResponse):
     """Schema for topic with statistics."""
     total_items: int = 0
     total_digests: int = 0
-    total_subscriptions: int = 0
-
-
 
 # ============================================================================
 # Digest Schemas
@@ -233,7 +230,6 @@ class SendDigestDelivery(BaseModel):
 
 
 class SendDigestResponse(BaseModel):
-    """Schema for send digest response."""
     digest_id: UUID
     user_id: UUID
     deliveries: List[SendDigestDelivery]
@@ -241,16 +237,12 @@ class SendDigestResponse(BaseModel):
     successful: int
     failed: int
 
-    """Schema for send digest response."""
-    digest_id: UUID
-    subscription_id: UUID
-    deliveries: List[SendDigestDelivery]
-    total_sent: int
-    successful: int
-
-
+    model_config = {"from_attributes": True}
 
 # ============================================================================
+# Trigger Response Schemas
+# ============================================================================
+
 # Trigger Response Schemas
 # ============================================================================
 

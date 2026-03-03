@@ -3,31 +3,15 @@
 import click
 from uuid import UUID
 from typing import List, Optional
-from xndctl.cli import pass_context, Context
-from xndctl.schemas import DigestWithDetails
-from xndctl.utils import (
-    handle_error,
-    display_success,
-    display_warning,
-    display_info,
-    truncate_text,
-    console
-)
+from xndctl.context import pass_context, Context
+from xndctl.schemas import DigestWithDetails, UserWithTopics
+from xndctl.utils import handle_error, display_success, display_warning, display_info, truncate_text, console
 
 
 def prompt_select_digest(digests: List[DigestWithDetails]) -> Optional[UUID]:
-    """Prompt to select a digest from list.
-
-    Args:
-        digests: List of available digests
-
-    Returns:
-        Selected digest ID or None if cancelled
-    """
     click.echo()
     console.print("[bold]Select Digest:[/bold]")
     for i, digest in enumerate(digests, 1):
-        # Extract headline from summary_json
         headline = "No headline"
         if isinstance(digest.summary_json, dict) and "headline" in digest.summary_json:
             headline = digest.summary_json["headline"]
@@ -50,47 +34,36 @@ def prompt_select_digest(digests: List[DigestWithDetails]) -> Optional[UUID]:
             console.print(f"[red]Invalid input. Enter a number 0-{len(digests)}[/red]")
 
 
-def prompt_select_subscription(subscriptions: List) -> Optional[UUID]:
-    """Prompt to select a subscription from list.
-
-    Args:
-        subscriptions: List of available subscriptions
-
-    Returns:
-        Selected subscription ID or None if cancelled
-    """
+def prompt_select_user_for_digest(users: List[UserWithTopics], topic_name: str) -> Optional[UUID]:
     click.echo()
-    console.print("[bold]Select Subscription:[/bold]")
-    for i, sub in enumerate(subscriptions, 1):
-        user_name = f"{sub.user.name or '(no name)'} ({sub.user.email})"
-        topic_name = sub.topic.name
+    console.print(f"[bold]Select User to notify for topic '{topic_name}':[/bold]")
+    for i, user in enumerate(users, 1):
+        display_name = user.name or "(no name)"
         channels = []
-        if sub.enable_feishu:
+        if user.enable_feishu:
             channels.append("feishu")
-        if sub.enable_email:
+        if user.enable_email:
             channels.append("email")
-
-        click.echo(f"  {i}. {user_name} → {topic_name} ({', '.join(channels)})")
+        channels_str = ", ".join(channels) if channels else "none"
+        click.echo(f"  {i}. {display_name} ({user.email}) - channels: {channels_str}")
 
     while True:
         try:
-            sub_input = click.prompt("\nSelect subscription (number, 0 to cancel)", type=int)
-            if sub_input == 0:
+            user_input = click.prompt("\nSelect user (number, 0 to cancel)", type=int)
+            if user_input == 0:
                 return None
-            if 1 <= sub_input <= len(subscriptions):
-                return subscriptions[sub_input - 1].id
-            console.print(f"[red]Invalid selection. Choose 0-{len(subscriptions)}[/red]")
+            if 1 <= user_input <= len(users):
+                return users[user_input - 1].id
+            console.print(f"[red]Invalid selection. Choose 0-{len(users)}[/red]")
         except Exception:
-            console.print(f"[red]Invalid input. Enter a number 0-{len(subscriptions)}[/red]")
+            console.print(f"[red]Invalid input. Enter a number 0-{len(users)}[/red]")
 
 
 @click.command(name="notify")
 @click.option("-p", "--prompt", is_flag=True, required=True, help="Interactive mode (required)")
 @pass_context
 def notify(ctx: Context, prompt: bool):
-    """Manually send digest notification (interactive only)."""
     try:
-        # Fetch digests
         digests_result = ctx.client.list_digests(limit=100)
 
         if not digests_result.items:
@@ -99,52 +72,46 @@ def notify(ctx: Context, prompt: bool):
 
         display_info(f"Found {len(digests_result.items)} recent digests")
 
-        # Interactive digest selection
         selected_digest_id = prompt_select_digest(digests_result.items)
 
         if not selected_digest_id:
             display_warning("Notification cancelled")
             return
 
-        # Get digest details
         selected_digest = next(d for d in digests_result.items if d.id == selected_digest_id)
+        topic_id = selected_digest.topic_id
+        topic_name = selected_digest.topic.name if selected_digest.topic else "Unknown"
 
-        # Fetch subscriptions for the digest's topic
-        all_subscriptions = ctx.client.list_subscriptions(limit=1000)
-        topic_subscriptions = [
-            s for s in all_subscriptions.items
-            if s.topic_id == selected_digest.topic_id
-        ]
+        all_users = ctx.client.list_users(limit=1000)
+        topic_users = []
+        for user in all_users.items:
+            if user.topics and str(topic_id) in user.topics:
+                topic_users.append(user)
 
-        if not topic_subscriptions:
-            console.print(f"[red]Error:[/red] No subscriptions found for topic '{selected_digest.topic.name}'")
+        if not topic_users:
+            console.print(f"[red]Error:[/red] No users subscribed to topic '{topic_name}'")
             return
 
-        display_info(f"Found {len(topic_subscriptions)} subscription(s) for this topic")
+        display_info(f"Found {len(topic_users)} user(s) subscribed to this topic")
 
-        # Interactive subscription selection
-        selected_subscription_id = prompt_select_subscription(topic_subscriptions)
+        selected_user_id = prompt_select_user_for_digest(topic_users, topic_name)
 
-        if not selected_subscription_id:
+        if not selected_user_id:
             display_warning("Notification cancelled")
             return
 
-        # Get subscription details for display
-        selected_subscription = next(s for s in topic_subscriptions if s.id == selected_subscription_id)
+        selected_user = next(u for u in topic_users if u.id == selected_user_id)
 
-        # Send digest
-        display_info(f"Sending digest to {selected_subscription.user.email}...")
-        result = ctx.client.send_digest(selected_digest_id, selected_subscription_id)
+        display_info(f"Sending digest to {selected_user.email}...")
+        result = ctx.client.send_digest(selected_digest_id, selected_user_id)
 
-        # Display result
-        display_success(f"Digest notification sent")
+        display_success("Digest notification sent")
         click.echo()
         console.print("[bold]Delivery Statistics:[/bold]")
         console.print(f"  Total: {result.total_sent}")
         console.print(f"  Successful: [green]{result.successful}[/green]")
         console.print(f"  Failed: [red]{result.failed}[/red]")
 
-        # Show delivery details
         if result.deliveries:
             click.echo()
             console.print("[bold]Deliveries:[/bold]")

@@ -1,6 +1,6 @@
 # xndctl - X News Digest CLI Tool
 
-X News Digest 的命令行管理工具，提供用户、Topic、订阅的完整管理功能。
+X News Digest 的命令行管理工具，提供用户和 Topic 的完整管理功能。
 
 ## 安装
 
@@ -49,20 +49,13 @@ xndctl topic create -p
 xndctl topic create --name "AI News" --query "artificial intelligence" --cron "0 8 * * *"
 ```
 
-### 4. 创建订阅
-
-```bash
-# 交互模式（必需）
-xndctl sub create -p
-```
-
-### 5. 触发采集
+### 4. 触发采集
 
 ```bash
 xndctl trigger -p
 ```
 
-### 6. 发送通知
+### 5. 发送通知
 
 ```bash
 xndctl notify -p
@@ -176,42 +169,6 @@ xndctl topic delete --name "AI News"
 xndctl topic delete --id <uuid> -y  # 跳过确认
 ```
 
-### sub - 订阅管理
-
-#### 创建订阅
-
-```bash
-# 交互模式（必需）
-xndctl sub create -p
-```
-
-此命令会：
-1. 显示可用用户列表
-2. 显示可用 Topic 列表
-3. 提示选择通知渠道（飞书、邮件）
-4. 确认后创建
-
-#### 列出订阅
-
-```bash
-xndctl sub ls
-xndctl sub ls --user-id <uuid>
-xndctl sub ls --topic-id <uuid>
-```
-
-#### 获取订阅详情
-
-```bash
-xndctl sub get --id <uuid>
-```
-
-#### 删除订阅
-
-```bash
-xndctl sub delete --id <uuid>
-xndctl sub delete --id <uuid> -y  # 跳过确认
-```
-
 ### trigger - 触发采集
 
 ```bash
@@ -220,14 +177,14 @@ xndctl trigger -p
 
 此命令会：
 1. 显示可用用户列表
-2. 显示用户的订阅和 Topics
+2. 显示用户的 topics 列表
 3. 触发用户级聚合采集
 4. 显示任务 ID 和 Topic 数量
 
 **触发流程**：
-- 收集用户所有订阅 Topic 的数据
+- 收集用户 `topics` 列表中所有 Topic 的数据
 - 生成单一聚合摘要
-- 通过配置的渠道发送通知
+- 根据用户级通知渠道设置（`enable_feishu`, `enable_email`）发送通知
 
 ### notify - 发送通知
 
@@ -237,10 +194,9 @@ xndctl notify -p
 
 此命令会：
 1. 显示最近的摘要列表
-2. 显示所选摘要的 Topic 订阅
-3. 发送通知到选择的订阅
+2. 提示输入用户 ID
+3. 根据用户级通知渠道设置发送通知
 4. 显示发送统计（成功/失败数量）
-
 ### config - 配置管理
 
 #### 查看配置
@@ -332,12 +288,9 @@ xndctl topic create -p
 # Query: artificial intelligence
 # Cron: 0 8 * * *
 
-# 3. 创建订阅
-xndctl sub create -p
-# Select user: 1 (John Doe)
-# Select topic: 1 (AI News)
-# Enable Feishu: Yes
-# Enable Email: Yes
+# 3. 将 Topic 关联到用户（通过用户更新）
+xndctl user update --name "John Doe" -p
+# 选择要关联的 topics
 
 # 4. 触发采集
 xndctl trigger -p
@@ -346,8 +299,7 @@ xndctl trigger -p
 # 5. 发送通知（采集完成后）
 xndctl notify -p
 # Select digest: 1
-# Select subscription: 1
-```
+# Enter user_id: <user-uuid>
 
 ## 故障排查
 
@@ -389,23 +341,62 @@ cli/
 │   ├── config.py           # 配置管理
 │   ├── client.py           # API 客户端
 │   ├── schemas.py          # Pydantic 模型
-│   ├── utils.py            # 显示和错误处理
+│   ├── utils.py             # 显示和错误处理
 │   ├── commands/           # 命令实现
 │   │   ├── user.py
 │   │   ├── topic.py
-│   │   ├── subscription.py
 │   │   ├── trigger.py
 │   │   └── notify.py
 │   └── prompts/            # 交互式提示
 │       ├── user.py
-│       ├── topic.py
-│       └── subscription.py
+│       └── topic.py
 ├── tests/
 ├── setup.py
 └── README.md
 ```
 
-## 许可证
+## Breaking Changes
 
-MIT License
+### v2.0 - Subscription Commands Removed
 
+**Migration Date**: 2026-03-03
+
+The `xndctl sub` command group has been completely removed:
+
+#### Removed Commands
+
+- `xndctl sub create -p` - No longer available
+- `xndctl sub ls` - No longer available
+- `xndctl sub get --id <uuid>` - No longer available
+- `xndctl sub delete --id <uuid>` - No longer available
+
+#### New Workflow
+
+**Old Approach** (subscription-based):
+```bash
+xndctl sub create -p
+# Select user, topic, channels
+```
+
+**New Approach** (user-topics):
+```bash
+# Associate topics with user during user creation or update
+xndctl user create -p  # Include topics in creation
+# OR
+xndctl user update --name "John Doe" -p  # Update topics list
+```
+
+#### Notification Channel Configuration
+
+- **Before**: Configured per subscription (each user-topic pair had separate channel settings)
+- **After**: Configured at user level (`enable_feishu`, `enable_email` flags)
+- **Impact**: ALL topics in user's `topics` list receive notifications via ALL enabled channels
+
+#### Migration Path
+
+1. Existing subscriptions have been migrated to `users.topics` array
+2. Channel preferences have been OR-aggregated to user-level flags
+3. Use `xndctl user get --name "John Doe"` to view user's topics and channel settings
+4. Use `xndctl user update` to modify topics or channel preferences
+
+For backend API changes, see main README.md Breaking Changes section.

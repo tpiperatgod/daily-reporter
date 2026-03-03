@@ -21,10 +21,9 @@ X-News-Digest is an automated Twitter/X news digest system that collects tweets 
 
 1. **FastAPI Application** (`app/main.py`)
    - REST API with health checks, CORS, and auto-documented endpoints
-   - Routers: users, topics, subscriptions, digests
+   - Routers: users, topics, digests
    - Async database sessions via SQLAlchemy
    - Startup checks for database, Redis, and Celery workers
-
 2. **Celery Workers** (`app/workers/`)
    - `celery_app.py`: Configuration and task auto-discovery
    - `tasks.py`: Core pipeline tasks (collect_data, generate_digest, send_notifications)
@@ -39,7 +38,7 @@ X-News-Digest is an automated Twitter/X news digest system that collects tweets 
 
 ### Data Pipeline Flow
 
-#### Topic-Scoped Pipeline (Legacy)
+#### Topic-Scoped Pipeline (Deprecated)
 ```
 Topic (cron schedule) → Celery Beat → collect_data task
   ↓
@@ -51,14 +50,16 @@ Store Items in PostgreSQL (update topic.last_tweet_id)
   ↓
 generate_digest task (LLM summarization)
   ↓
-send_notifications task → Feishu/Email delivery
+[DECOMMISSIONED] notify task no longer chains
 ```
 
-#### User-Scoped Pipeline (Recommended)
+**Note**: Topic-scoped notification pipeline has been decommissioned. Use user-scoped pipeline for notifications.
+
+#### User-Scoped Pipeline (Active)
 ```
 User (cron schedule) → Celery Beat → collect_user_topics task
   ↓
-For each subscribed topic:
+For each topic in user.topics:
   TwitterAPIAdapter.fetch_items(since_id=topic.last_tweet_id)
   ↓
 Aggregate all items from all topics
@@ -68,21 +69,22 @@ generate_user_digest task (LLM summarization of aggregated items)
 notify_user_digest task → Feishu/Email delivery
 ```
 
-**Key Differences:**
-- User-scoped pipeline generates a single aggregated digest from all subscribed topics
-- Topic-scoped pipeline generates separate digests per topic
+**Key Features**:
+- User-scoped pipeline generates a single aggregated digest from all topics in `user.topics`
+- Topic-scoped pipeline generates separate digests per topic but no longer sends notifications
 - User-scoped is triggered via `POST /users/{user_id}/trigger`
-- Topic-scoped is triggered via `POST /topics/{topic_id}/trigger` (deprecated)
+- Topic-scoped is triggered via `POST /topics/{topic_id}/trigger` (deprecated for notifications)
+- Notification channels determined by user-level flags: `enable_feishu`, `enable_email`
 
 ### Key Database Models (`app/db/models.py`)
 
-- **User**: Email, Feishu webhook credentials
+- **User**: Email, Feishu webhook credentials, `topics` (JSONB array), `enable_feishu`, `enable_email` flags
 - **Topic**: Search query, cron schedule, `last_tweet_id` (critical for incremental fetch)
-- **Subscription**: Links User ↔ Topic with channel preferences
 - **Item**: Raw tweet data with `source_id` (unique), `embedding_hash` (deduplication)
 - **Digest**: Generated summary with time window and JSON structure
 - **Delivery**: Notification tracking (status, retry_count, error_msg)
 
+**Note**: The `Subscription` model has been removed. User-topic relationships are now stored in `users.topics` JSONB array.
 ### Provider System (`app/services/provider/`)
 
 Factory pattern in `factory.py` returns the correct adapter based on `X_PROVIDER` env var:
@@ -509,14 +511,9 @@ xndctl topic create -p             # Interactive with cron validation
 xndctl topic ls
 xndctl topic update --name "AI News" --enable
 
-# Subscriptions
-xndctl sub create -p               # Must use interactive mode
-xndctl sub ls --user-id <uuid>
-
 # Manual triggers
-xndctl trigger -p                  # Select topic to collect
-xndctl notify -p                   # Select digest to send
-
+xndctl trigger -p                  # Select user to trigger collection
+xndctl notify -p                   # Select digest and user to send
 # Configuration
 xndctl config                      # View current config
 xndctl init                        # Reinitialize config

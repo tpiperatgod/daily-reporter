@@ -1,9 +1,10 @@
 """Integration tests for Twitter API adapter."""
 
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta
 from uuid import uuid4
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.db.models import Topic, Item
 from app.services.provider.factory import get_provider
@@ -24,7 +25,7 @@ def mock_twitter_settings():
         yield mock_settings
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_topic(async_session):
     """Create a test topic in database."""
     topic = Topic(
@@ -47,19 +48,28 @@ class TestProviderFactory:
 
     def test_factory_returns_twitter_adapter(self, mock_twitter_settings):
         """Test factory returns TwitterAPIAdapter when configured."""
+        # Mock embedding provider to avoid Ollama service calls
+        with patch("app.workers.tasks.get_embedding_provider") as mock_embed:
+            mock_embed.return_value = AsyncMock()
+
         with patch("app.services.provider.factory.settings", mock_twitter_settings):
             provider = get_provider()
             assert isinstance(provider, TwitterAPIAdapter)
 
     def test_factory_twitter_api_missing_key(self):
         """Test factory raises error when API key is missing."""
-        with patch("app.core.config.settings") as mock_settings:
-            mock_settings.X_PROVIDER = "TWITTER_API"
+        with patch("app.services.provider.twitter_adapter.settings") as mock_settings:
             mock_settings.TWITTER_API_KEY = None
+            mock_settings.TWITTER_API_BASE_URL = "https://api.twitterapi.io"
+            mock_settings.TWITTER_API_TIMEOUT_SECONDS = 30
+            mock_settings.TWITTER_API_MAX_PAGES = 5
 
-            with pytest.raises(ValueError, match="TWITTER_API_KEY"):
-                from app.services.provider.factory import get_provider
-                get_provider()
+            with patch("app.services.provider.factory.settings") as factory_settings:
+                factory_settings.X_PROVIDER = "TWITTER_API"
+                factory_settings.UPPER = lambda s: s.upper()
+
+                with pytest.raises(ValueError, match="TWITTER_API_KEY"):
+                    get_provider()
 
 
 class TestIncrementalCollection:
@@ -68,20 +78,24 @@ class TestIncrementalCollection:
     @pytest.mark.asyncio
     async def test_first_collection_no_since_id(self, async_session, test_topic, mock_twitter_settings):
         """Test first collection run without since_id."""
+        # Generate unique source IDs for this test
+        id1 = str(uuid4().int % 1000000000)
+        id2 = str(uuid4().int % 1000000000)
+
         mock_tweets = {
             "tweets": [
                 {
-                    "id": "100",
+                    "id": id1,
                     "author": {"userName": "karpathy"},
                     "text": "First tweet",
-                    "url": "https://x.com/karpathy/status/100",
+                    "url": f"https://x.com/karpathy/status/{id1}",
                     "createdAt": "Fri Jan 31 10:00:00 +0000 2025"
                 },
                 {
-                    "id": "200",
+                    "id": id2,
                     "author": {"userName": "karpathy"},
                     "text": "Second tweet",
-                    "url": "https://x.com/karpathy/status/200",
+                    "url": f"https://x.com/karpathy/status/{id2}",
                     "createdAt": "Fri Jan 31 11:00:00 +0000 2025"
                 }
             ],
@@ -92,26 +106,39 @@ class TestIncrementalCollection:
         with patch("app.services.provider.twitter_adapter.httpx.AsyncClient") as mock_client:
             mock_get = AsyncMock(return_value=type('Response', (), {
                 'status_code': 200,
-                'json': lambda: mock_tweets,
-                'raise_for_status': lambda: None
+                'json': lambda self=None: mock_tweets,
+                'raise_for_status': lambda self=None: None
             })())
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
-            # Mock LLM client
+            # Mock LLM client and embedding provider
             with patch("app.workers.tasks.LLMClient") as mock_llm_class:
                 mock_llm = AsyncMock()
-                mock_llm.generate_embedding_hash = AsyncMock(return_value="hash123")
+                mock_llm.generate_embedding_hashes_batch = AsyncMock(return_value=["hash1", "hash2"])
                 mock_llm.close = AsyncMock()
                 mock_llm_class.return_value = mock_llm
 
-                # Mock settings in worker
-                with patch("app.services.provider.factory.settings", mock_twitter_settings):
-                    with patch("app.workers.tasks.generate_digest") as mock_digest:
-                        # Run collection
-                        result = await _collect_data_async(
-                            None,  # self (task instance)
-                            str(test_topic.id)
-                        )
+                # Mock embedding provider to avoid Ollama service calls
+                with patch("app.workers.tasks.get_embedding_provider") as mock_embed:
+                    mock_embed.return_value = AsyncMock()
+
+                    # Mock batch_check_exists to return empty (no duplicates)
+                    with patch("app.db.utils.batch_check_exists", return_value=set()):
+
+                        # Mock settings in worker
+                        with patch("app.services.provider.factory.settings", mock_twitter_settings):
+                            with patch("app.workers.tasks.generate_digest"):
+                                # Create mock task instance with retry tracking
+                                mock_task = MagicMock()
+                                mock_task.request = MagicMock()
+                                mock_task.request.retries = 0
+                                mock_task.max_retries = 3
+
+                                # Run collection
+                                result = await _collect_data_async(
+                                    mock_task,  # self (task instance)
+                                    str(test_topic.id)
+                                )
 
                         # Verify results
                         assert result["status"] == "success"
@@ -121,7 +148,7 @@ class TestIncrementalCollection:
                         await async_session.refresh(test_topic)
 
                         # Verify last_tweet_id was updated to highest ID
-                        assert test_topic.last_tweet_id == "200"
+                        assert test_topic.last_tweet_id == str(max(int(id1), int(id2)))
                         assert test_topic.last_collection_timestamp is not None
 
                         # Verify items were created
@@ -134,18 +161,22 @@ class TestIncrementalCollection:
     @pytest.mark.asyncio
     async def test_second_collection_with_since_id(self, async_session, test_topic, mock_twitter_settings):
         """Test second collection run uses since_id."""
+        # Generate unique source IDs for this test
+        old_id = str(uuid4().int % 1000000000)
+        new_id = str(uuid4().int % 1000000000)
+
         # Set up topic with existing last_tweet_id
-        test_topic.last_tweet_id = "200"
+        test_topic.last_tweet_id = old_id
         test_topic.last_collection_timestamp = datetime.utcnow() - timedelta(hours=1)
         await async_session.commit()
 
         mock_tweets = {
             "tweets": [
                 {
-                    "id": "300",
+                    "id": new_id,
                     "author": {"userName": "karpathy"},
-                    "text": "New tweet after 200",
-                    "url": "https://x.com/karpathy/status/300",
+                    "text": f"New tweet after {old_id}",
+                    "url": f"https://x.com/karpathy/status/{new_id}",
                     "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
                 }
             ],
@@ -156,29 +187,42 @@ class TestIncrementalCollection:
         with patch("app.services.provider.twitter_adapter.httpx.AsyncClient") as mock_client:
             mock_get = AsyncMock(return_value=type('Response', (), {
                 'status_code': 200,
-                'json': lambda: mock_tweets,
-                'raise_for_status': lambda: None
+                'json': lambda self=None: mock_tweets,
+                'raise_for_status': lambda self=None: None
             })())
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
             with patch("app.workers.tasks.LLMClient") as mock_llm_class:
                 mock_llm = AsyncMock()
-                mock_llm.generate_embedding_hash = AsyncMock(return_value="hash456")
+                mock_llm.generate_embedding_hashes_batch = AsyncMock(return_value=["hash456"])
                 mock_llm.close = AsyncMock()
                 mock_llm_class.return_value = mock_llm
 
-                with patch("app.services.provider.factory.settings", mock_twitter_settings):
-                    with patch("app.workers.tasks.generate_digest") as mock_digest:
-                        result = await _collect_data_async(None, str(test_topic.id))
+                # Mock embedding provider to avoid Ollama service calls
+                with patch("app.workers.tasks.get_embedding_provider") as mock_embed:
+                    mock_embed.return_value = AsyncMock()
 
-                        # Verify query included since_id
-                        call_args = mock_get.call_args
-                        params = call_args[1]['params']
-                        assert "since_id:200" in params['query']
+                    # Mock batch_check_exists to return empty (no duplicates)
+                    with patch("app.db.utils.batch_check_exists", return_value=set()):
 
-                        # Verify last_tweet_id updated to new highest
-                        await async_session.refresh(test_topic)
-                        assert test_topic.last_tweet_id == "300"
+                        with patch("app.services.provider.factory.settings", mock_twitter_settings):
+                            with patch("app.workers.tasks.generate_digest"):
+                                # Create mock task instance
+                                mock_task = MagicMock()
+                                mock_task.request = MagicMock()
+                                mock_task.request.retries = 0
+                                mock_task.max_retries = 3
+
+                                await _collect_data_async(mock_task, str(test_topic.id))
+
+                                # Verify query included since_id
+                                call_args = mock_get.call_args
+                                params = call_args[1]['params']
+                                assert f"since_id:{old_id}" in params['query']
+
+                                # Verify last_tweet_id updated to new highest
+                                await async_session.refresh(test_topic)
+                                assert test_topic.last_tweet_id == new_id
 
     @pytest.mark.asyncio
     async def test_no_new_tweets_preserves_last_tweet_id(self, async_session, test_topic, mock_twitter_settings):
@@ -195,13 +239,19 @@ class TestIncrementalCollection:
         with patch("app.services.provider.twitter_adapter.httpx.AsyncClient") as mock_client:
             mock_get = AsyncMock(return_value=type('Response', (), {
                 'status_code': 200,
-                'json': lambda: mock_tweets,
-                'raise_for_status': lambda: None
+                'json': lambda self=None: mock_tweets,
+                'raise_for_status': lambda self=None: None
             })())
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
             with patch("app.services.provider.factory.settings", mock_twitter_settings):
-                result = await _collect_data_async(None, str(test_topic.id))
+                # Create mock task instance
+                mock_task = MagicMock()
+                mock_task.request = MagicMock()
+                mock_task.request.retries = 0
+                mock_task.max_retries = 3
+
+                await _collect_data_async(mock_task, str(test_topic.id))
 
                 # Verify last_tweet_id unchanged
                 await async_session.refresh(test_topic)
@@ -221,13 +271,19 @@ class TestDatabaseUpdates:
         with patch("app.services.provider.twitter_adapter.httpx.AsyncClient") as mock_client:
             mock_get = AsyncMock(return_value=type('Response', (), {
                 'status_code': 200,
-                'json': lambda: mock_tweets,
-                'raise_for_status': lambda: None
+                'json': lambda self=None: mock_tweets,
+                'raise_for_status': lambda self=None: None
             })())
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
             with patch("app.services.provider.factory.settings", mock_twitter_settings):
-                await _collect_data_async(None, str(test_topic.id))
+                # Create mock task instance
+                mock_task = MagicMock()
+                mock_task.request = MagicMock()
+                mock_task.request.retries = 0
+                mock_task.max_retries = 3
+
+                await _collect_data_async(mock_task, str(test_topic.id))
 
                 await async_session.refresh(test_topic)
                 assert test_topic.last_collection_timestamp != initial_timestamp
@@ -236,13 +292,16 @@ class TestDatabaseUpdates:
     @pytest.mark.asyncio
     async def test_items_inserted_with_correct_topic_id(self, async_session, test_topic, mock_twitter_settings):
         """Test that collected items have correct topic_id."""
+        # Generate unique source ID for this test
+        test_id = str(uuid4().int % 1000000000)
+
         mock_tweets = {
             "tweets": [
                 {
-                    "id": "123",
+                    "id": test_id,
                     "author": {"userName": "karpathy"},
                     "text": "Test",
-                    "url": "https://x.com/karpathy/status/123",
+                    "url": f"https://x.com/karpathy/status/{test_id}",
                     "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
                 }
             ],
@@ -253,28 +312,41 @@ class TestDatabaseUpdates:
         with patch("app.services.provider.twitter_adapter.httpx.AsyncClient") as mock_client:
             mock_get = AsyncMock(return_value=type('Response', (), {
                 'status_code': 200,
-                'json': lambda: mock_tweets,
-                'raise_for_status': lambda: None
+                'json': lambda self=None: mock_tweets,
+                'raise_for_status': lambda self=None: None
             })())
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
             with patch("app.workers.tasks.LLMClient") as mock_llm_class:
                 mock_llm = AsyncMock()
-                mock_llm.generate_embedding_hash = AsyncMock(return_value="hash")
+                mock_llm.generate_embedding_hashes_batch = AsyncMock(return_value=["hash"])
                 mock_llm.close = AsyncMock()
                 mock_llm_class.return_value = mock_llm
 
-                with patch("app.services.provider.factory.settings", mock_twitter_settings):
-                    with patch("app.workers.tasks.generate_digest"):
-                        await _collect_data_async(None, str(test_topic.id))
+                # Mock embedding provider to avoid Ollama service calls
+                with patch("app.workers.tasks.get_embedding_provider") as mock_embed:
+                    mock_embed.return_value = AsyncMock()
 
-                        # Verify item has correct topic_id
-                        items = await async_session.execute(
-                            Item.__table__.select().where(Item.topic_id == test_topic.id)
-                        )
-                        items_list = items.fetchall()
-                        assert len(items_list) == 1
-                        assert str(items_list[0].topic_id) == str(test_topic.id)
+                    # Mock batch_check_exists to return empty (no duplicates)
+                    with patch("app.db.utils.batch_check_exists", return_value=set()):
+
+                        with patch("app.services.provider.factory.settings", mock_twitter_settings):
+                            with patch("app.workers.tasks.generate_digest"):
+                                # Create mock task instance
+                                mock_task = MagicMock()
+                                mock_task.request = MagicMock()
+                                mock_task.request.retries = 0
+                                mock_task.max_retries = 3
+
+                                await _collect_data_async(mock_task, str(test_topic.id))
+
+                                # Verify item has correct topic_id
+                                items = await async_session.execute(
+                                    Item.__table__.select().where(Item.topic_id == test_topic.id)
+                                )
+                                items_list = items.fetchall()
+                                assert len(items_list) == 1
+                                assert str(items_list[0].topic_id) == str(test_topic.id)
 
 
 class TestErrorHandling:
@@ -304,7 +376,13 @@ class TestErrorHandling:
                 mock_client.return_value.__aenter__.return_value.get = mock_get
 
                 with patch("app.services.provider.factory.settings", mock_settings):
-                    result = await _collect_data_async(None, str(test_topic.id))
+                    # Create mock task instance with max retries to avoid retry
+                    mock_task = MagicMock()
+                    mock_task.request = MagicMock()
+                    mock_task.request.retries = 3  # Set to max to avoid retry
+                    mock_task.max_retries = 3
+
+                    result = await _collect_data_async(mock_task, str(test_topic.id))
 
                     # Should return error status
                     assert result["status"] == "error"
@@ -315,14 +393,20 @@ class TestErrorHandling:
         test_topic.is_enabled = False
         await async_session.commit()
 
-        result = await _collect_data_async(None, str(test_topic.id))
+        # Create mock task instance
+        mock_task = MagicMock()
+        mock_task.request = MagicMock()
+        mock_task.request.retries = 0
+        mock_task.max_retries = 3
+
+        result = await _collect_data_async(mock_task, str(test_topic.id))
 
         assert result["status"] == "skipped"
         assert "disabled" in result["message"].lower()
 
 
 # Pytest fixtures for async database
-@pytest.fixture
+@pytest_asyncio.fixture
 async def async_session():
     """Create async database session for testing."""
     from app.db.session import AsyncSessionLocal

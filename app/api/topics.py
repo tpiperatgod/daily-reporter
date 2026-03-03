@@ -126,15 +126,10 @@ async def get_topic(topic_id: UUID, db: AsyncSession = Depends(get_db)):
     digests_count = await db.execute(select(func.count(Digest.id)).where(Digest.topic_id == topic_id))
     total_digests = digests_count.scalar() or 0
 
-    # Count subscriptions (TODO: This needs to be recalculated based on new schema)
-    # For now, set to 0 as Subscription model was removed
-    total_subscriptions = 0
-
     # Build response
     response = TopicWithStats.from_orm(topic)
     response.total_items = total_items
     response.total_digests = total_digests
-    response.total_subscriptions = total_subscriptions
 
     return response
 

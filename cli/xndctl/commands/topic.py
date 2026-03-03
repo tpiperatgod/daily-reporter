@@ -2,7 +2,7 @@
 
 import click
 from uuid import UUID
-from xndctl.cli import pass_context, Context
+from xndctl.context import pass_context, Context
 from xndctl.schemas import TopicCreate, TopicUpdate
 from xndctl.utils import (
     display_paginated_results,
@@ -88,7 +88,7 @@ def list_topics(ctx: Context, limit: int, offset: int):
         result = ctx.client.list_topics(limit=limit, offset=offset)
 
         # Prepare display columns
-        columns = ["id", "name", "query", "cron_expression", "is_enabled", "last_collection_timestamp", "total_subscriptions"]
+        columns = ["id", "name", "query", "cron_expression", "is_enabled", "last_collection_timestamp"]
 
         display_paginated_results(
             items=result.items,
@@ -131,7 +131,6 @@ def get_topic(ctx: Context, topic_id: str, name: str):
             console.print("[bold]Statistics:[/bold]")
             click.echo(f"  Total Items: {topic.total_items}")
             click.echo(f"  Total Digests: {topic.total_digests}")
-            click.echo(f"  Total Subscriptions: {topic.total_subscriptions}")
 
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)
@@ -239,7 +238,6 @@ def delete(ctx: Context, topic_id: str, name: str, yes: bool):
         click.echo(f"ID: {topic.id}")
         click.echo(f"Query: {topic.query}")
         click.echo(f"Schedule: {topic.cron_expression}")
-        click.echo(f"Subscriptions: {topic.total_subscriptions}")
 
         # Confirm deletion
         if not yes:

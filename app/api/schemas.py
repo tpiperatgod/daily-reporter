@@ -147,8 +147,6 @@ class TopicWithStats(TopicResponse):
 
     total_items: int = 0
     total_digests: int = 0
-    total_subscriptions: int = 0
-
 
 
 # ============================================================================
@@ -262,9 +260,6 @@ class SendDigestRequest(BaseModel):
 
     user_id: UUID
 
-    """Schema for manually sending digest to a subscription."""
-
-
 
 
 class SendDigestDelivery(BaseModel):
@@ -289,14 +284,6 @@ class SendDigestResponse(BaseModel):
     total_sent: int
     successful: int
     failed: int
-
-    """Schema for send digest response."""
-
-    digest_id: UUID
-    subscription_id: UUID
-    deliveries: List[SendDigestDelivery]
-    total_sent: int
-    successful: int
 
 
 

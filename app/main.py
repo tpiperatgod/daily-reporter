@@ -143,13 +143,13 @@ async def root():
 
 
 # Register API routers
-from app.api import users, topics, subscriptions, digests
+from app.api import users, topics, digests
 
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 
 app.include_router(topics.router, prefix="/api/v1", tags=["topics"])
 
-app.include_router(subscriptions.router, prefix="/api/v1", tags=["subscriptions"])
+
 
 app.include_router(digests.router, prefix="/api/v1", tags=["digests"])
 

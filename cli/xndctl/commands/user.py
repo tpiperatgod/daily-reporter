@@ -2,7 +2,7 @@
 
 import click
 from uuid import UUID
-from xndctl.cli import pass_context, Context
+from xndctl.context import pass_context, Context
 from xndctl.schemas import UserCreate, UserUpdate
 from xndctl.utils import (
     display_paginated_results,
@@ -125,18 +125,18 @@ def get_user(ctx: Context, user_id: str, name: str, email: str):
 
         display_output(user, format=ctx.output_format, title="User Details")
 
-        # Show subscriptions if any
-        if user.subscriptions and ctx.output_format == "table":
+        if user.topics and ctx.output_format == "table":
             click.echo()
-            console.print(f"[bold]Subscriptions ({len(user.subscriptions)}):[/bold]")
-            for sub in user.subscriptions:
-                topic_name = sub.topic.name if sub.topic else "Unknown"
-                channels = []
-                if sub.enable_feishu:
-                    channels.append("feishu")
-                if sub.enable_email:
-                    channels.append("email")
-                click.echo(f"  • {topic_name} ({', '.join(channels)})")
+            console.print(f"[bold]Topics ({len(user.topics)}):[/bold]")
+            for topic_id in user.topics:
+                click.echo(f"  • {topic_id}")
+            click.echo()
+            channels = []
+            if user.enable_feishu:
+                channels.append("feishu")
+            if user.enable_email:
+                channels.append("email")
+            console.print(f"[bold]Channels:[/bold] {', '.join(channels) if channels else 'none'}")
 
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)
@@ -241,8 +241,8 @@ def delete(ctx: Context, user_id: str, name: str, email: str, yes: bool):
         # Show user info
         click.echo(f"User: {user.name or '(no name)'} ({user.email})")
         click.echo(f"ID: {user.id}")
-        if user.subscriptions:
-            click.echo(f"Subscriptions: {len(user.subscriptions)}")
+        if user.topics:
+            click.echo(f"Topics: {len(user.topics)}")
 
         # Confirm deletion
         if not yes:

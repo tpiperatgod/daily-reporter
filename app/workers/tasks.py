@@ -400,8 +400,6 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
             await session.commit()
             await llm_client.close()
 
-            # 7. Chain to notify task
-            notify.delay(str(digest.id))
 
             return {
                 "status": "success",
@@ -425,101 +423,25 @@ async def _generate_digest_async(self, topic_id: str, window_start: str, window_
 @celery_app.task(bind=True, name="app.workers.tasks.notify", max_retries=2)
 def notify(self, digest_id: str):
     """
-    Send notifications for a digest.
+    DEPRECATED: Topic-scoped notifications are decommissioned.
+
+    This task is retained for task name compatibility only.
+    User-scoped notifications should use notify_user_digest instead.
 
     Args:
-        digest_id: UUID of the digest
+        digest_id: UUID of the digest (ignored)
 
-    Workflow:
-        1. Load digest and topic
-        2. Query subscriptions for the topic
-        3. For each subscription:
-           - Create delivery records
-           - Send to enabled channels (feishu/email)
-           - Update delivery status
-        4. Handle partial failures gracefully
+    Returns:
+        Always returns success with deprecation message
     """
-    logger.info(f"Starting notifications for digest {digest_id}")
-
-    return asyncio.run(_notify_async(self, digest_id))
+    logger.info("Topic-scoped notify task called - decommissioned, returning success")
+    return {"status": "success", "message": "Topic-scoped notifications decommissioned - use user-scoped pipeline"}
 
 
 async def _notify_async(self, digest_id: str):
-    """Async implementation of notify task."""
-    from app.db.session import get_async_session_local
-
-    try:
-        async with get_async_session_local()() as session:
-            # 1. Load digest with topic (eager load to prevent MissingGreenlet)
-            digest_result = await session.execute(
-                select(Digest).where(Digest.id == digest_id).options(selectinload(Digest.topic))
-            )
-            digest = digest_result.scalar_one_or_none()
-
-            if not digest:
-                logger.error(f"Digest {digest_id} not found")
-                return {"status": "error", "message": "Digest not found"}
-
-            topic = digest.topic
-
-            # 2. Query users who have this topic in their topics list
-            # TODO: Implement proper user query based on new schema
-            # For now, return early as Subscription model was removed
-            logger.info(f"Topic-based notifications temporarily disabled - Subscription model removed")
-            return {"status": "success", "message": "Notifications temporarily disabled"}
-
-            logger.info(f"Found {len(subscriptions)} subscriptions")
-
-            # 3. Send notifications using shared delivery service
-            from app.services.notifier.delivery import send_digest_to_user
-            from app.core.constants import NotificationChannel, DeliveryStatus
-
-            successful = 0
-            failed = 0
-            deliveries_created = 0
-
-            for subscription, user in subscriptions:
-                # Determine channels from subscription settings
-                channels = []
-                if subscription.enable_feishu:
-                    channels.append(NotificationChannel.FEISHU)
-                if subscription.enable_email:
-                    channels.append(NotificationChannel.EMAIL)
-
-                if not channels:
-                    logger.debug(f"No channels enabled for user {user.email}")
-                    continue
-
-                # Use shared service to send and track deliveries
-                deliveries = await send_digest_to_user(user=user, channels=channels, session=session, digest=digest)
-                # Aggregate results
-                for delivery in deliveries:
-                    deliveries_created += 1
-                    if delivery.status == DeliveryStatus.SUCCESS:
-                        successful += 1
-                    elif delivery.status == DeliveryStatus.FAILED:
-                        failed += 1
-
-            await session.commit()
-
-            return {
-                "status": "success",
-                "message": "Notifications sent",
-                "deliveries": deliveries_created,
-                "successful": successful,
-                "failed": failed,
-            }
-
-    except Exception as e:
-        logger.error(f"Notification task failed: {e}", exc_info=True)
-
-        # Retry with exponential backoff
-        if self.request.retries < self.max_retries:
-            countdown = 60 * (self.request.retries + 1)  # 60s, 120s
-            logger.info(f"Retrying in {countdown} seconds...")
-            raise self.retry(exc=e, countdown=countdown)
-
-        return {"status": "error", "message": str(e)}
+    """DEPRECATED: Async implementation removed - task is now a stub."""
+    # This function is retained for import compatibility only
+    return {"status": "success", "message": "Decommissioned"}
 
 
 # =============================================================================
@@ -530,14 +452,14 @@ async def _notify_async(self, digest_id: str):
 @celery_app.task(bind=True, name="app.workers.tasks.collect_user_topics", max_retries=3)
 def collect_user_topics(self, user_id: str):
     """
-    Collect data from Twitter/X for all topics a user is subscribed to.
+    Collect data from Twitter/X for all topics in user.topics.
 
     Args:
         user_id: UUID of the user
 
     Workflow:
-        1. Load user and their subscriptions
-        2. For each subscribed topic, collect items
+        1. Load user and their topics list
+        2. For each topic in user.topics, collect items
         3. Aggregate results
         4. Chain to generate_user_digest
     """
@@ -548,35 +470,58 @@ def collect_user_topics(self, user_id: str):
 async def _collect_user_topics_async(self, user_id: str):
     """Async implementation of collect_user_topics task.
 
-    Collects data from all topics a user is subscribed to.
+    Collects data from all topics in user.topics JSONB array.
     """
+    from uuid import UUID
     from app.db.session import get_async_session_local
     from app.db.utils import batch_check_exists
 
     try:
         async with get_async_session_local()() as session:
-            # 1. Load user with subscriptions and topics
-            result = await session.execute(
-                select(User)
-                .options(selectinload(User.subscriptions).selectinload(Subscription.topic))
-                .where(User.id == user_id)
-            )
+            # 1. Load user (no eager loading needed - topics is JSONB column)
+            result = await session.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
 
             if not user:
                 logger.error(f"User {user_id} not found")
                 return {"status": "error", "message": "User not found"}
 
-            if not user.subscriptions:
-                logger.info(f"User {user_id} has no subscriptions")
+            # 2. Handle empty topics list
+            if not user.topics:
+                logger.info(f"User {user_id} has no topics")
                 return {
                     "status": "success",
-                    "message": "No subscriptions",
+                    "message": "No topics configured",
                     "user_id": user_id,
                     "items_collected": 0,
                 }
 
-            logger.info(f"Collecting data for user {user_id} with {len(user.subscriptions)} subscriptions")
+            # 3. Load Topic objects from user.topics UUID strings
+            try:
+                topic_uuids = [UUID(tid) for tid in user.topics]
+            except ValueError as e:
+                logger.error(f"Invalid UUID in user.topics for user {user_id}: {e}")
+                return {
+                    "status": "error",
+                    "message": f"Invalid topic UUID in user configuration: {e}",
+                    "user_id": user_id,
+                }
+
+            topics_result = await session.execute(
+                select(Topic).where(Topic.id.in_(topic_uuids))
+            )
+            topics = topics_result.scalars().all()
+
+            if not topics:
+                logger.info(f"No valid topics found for user {user_id}")
+                return {
+                    "status": "success",
+                    "message": "No valid topics found",
+                    "user_id": user_id,
+                    "items_collected": 0,
+                }
+
+            logger.info(f"Collecting data for user {user_id} with {len(topics)} topics")
 
             # Track aggregated results
             total_items_collected = 0
@@ -588,14 +533,8 @@ async def _collect_user_topics_async(self, user_id: str):
             # Get provider once (shared across topics)
             provider = get_provider()
 
-            # 2. Process each subscription's topic
-            for subscription in user.subscriptions:
-                topic = subscription.topic
-
-                if not topic:
-                    logger.warning(f"Subscription {subscription.id} has no topic")
-                    continue
-
+            # 4. Process each topic
+            for topic in topics:
                 if not topic.is_enabled:
                     logger.info(f"Topic {topic.name} is disabled, skipping")
                     continue
@@ -647,7 +586,7 @@ async def _collect_user_topics_async(self, user_id: str):
                     topics_processed += 1
                     continue
 
-                # 3. Process items with deduplication using batch embeddings
+                # 5. Process items with deduplication using batch embeddings
                 embedding_provider = get_embedding_provider()
                 llm_client = LLMClient(embedding_provider=embedding_provider)
                 new_items = []
@@ -725,7 +664,7 @@ async def _collect_user_topics_async(self, user_id: str):
                     )
                     new_items.append(item)
 
-                # 4. Insert new items
+                # 6. Insert new items
                 if new_items:
                     session.add_all(new_items)
                     await session.commit()
@@ -743,7 +682,7 @@ async def _collect_user_topics_async(self, user_id: str):
                 else:
                     logger.info(f"No new items after deduplication for topic {topic.name}")
 
-                # 5. Update last_collection_timestamp and last_tweet_id
+                # 7. Update last_collection_timestamp and last_tweet_id
                 topic.last_collection_timestamp = end_date
 
                 # Track highest tweet ID
@@ -765,7 +704,7 @@ async def _collect_user_topics_async(self, user_id: str):
                 await llm_client.close()
                 topics_processed += 1
 
-            # 6. Chain to generate_user_digest if we have new items
+            # 8. Chain to generate_user_digest if we have new items
             if all_new_items:
                 logger.info("Chaining to generate_user_digest task")
                 generate_user_digest.delay(
@@ -790,11 +729,10 @@ async def _collect_user_topics_async(self, user_id: str):
             "user_id": user_id,
         }
 
-
 @celery_app.task(bind=True, name="app.workers.tasks.generate_user_digest", max_retries=1)
 def generate_user_digest(self, user_id: str, window_start: str, window_end: str):
     """
-    Generate a personalized digest for a user from all their subscribed topics.
+    Generate a personalized digest for a user from all topics in user.topics.
 
     Args:
         user_id: UUID of the user
@@ -802,8 +740,8 @@ def generate_user_digest(self, user_id: str, window_start: str, window_end: str)
         window_end: End of time window (ISO format string)
 
     Workflow:
-        1. Load user and their subscriptions
-        2. Fetch items from all subscribed topics in time window
+        1. Load user and their topics list
+        2. Fetch items from all topics in time window
         3. Call LLM to generate personalized digest
         4. Store user-specific digest
         5. Chain to notify_user_digest
@@ -817,6 +755,7 @@ def generate_user_digest(self, user_id: str, window_start: str, window_end: str)
 
 async def _generate_user_digest_async(self, user_id: str, window_start: str, window_end: str):
     """Async implementation of generate_user_digest task."""
+    from uuid import UUID
     from app.db.session import get_async_session_local
 
     try:
@@ -825,38 +764,52 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
             window_start_dt = datetime.fromisoformat(window_start)
             window_end_dt = datetime.fromisoformat(window_end)
 
-            # 2. Load user with subscriptions
-            result = await session.execute(
-                select(User)
-                .options(selectinload(User.subscriptions).selectinload(Subscription.topic))
-                .where(User.id == user_id)
-            )
+            # 2. Load user (no eager loading needed - topics is JSONB column)
+            result = await session.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
 
             if not user:
                 logger.error(f"User {user_id} not found")
                 return {"status": "error", "message": "User not found", "user_id": user_id}
 
-            if not user.subscriptions:
-                logger.info(f"User {user_id} has no subscriptions")
+            # 3. Handle empty topics list
+            if not user.topics:
+                logger.info(f"User {user_id} has no topics")
                 return {
                     "status": "success",
-                    "message": "User has no subscriptions",
+                    "message": "User has no topics configured",
                     "user_id": user_id,
                 }
 
-            # 3. Get topic_ids from subscriptions
-            topic_ids = [sub.topic_id for sub in user.subscriptions if sub.topic]
-
-            if not topic_ids:
-                logger.info(f"No active topics for user {user_id}")
+            # 4. Load Topic objects from user.topics UUID strings
+            try:
+                topic_uuids = [UUID(tid) for tid in user.topics]
+            except ValueError as e:
+                logger.error(f"Invalid UUID in user.topics for user {user_id}: {e}")
                 return {
-                    "status": "success",
-                    "message": "No active topics for user",
+                    "status": "error",
+                    "message": f"Invalid topic UUID in user configuration: {e}",
                     "user_id": user_id,
                 }
 
-            # 4. Query items for all topics in time window
+            topics_result = await session.execute(
+                select(Topic).where(Topic.id.in_(topic_uuids))
+            )
+            topics = topics_result.scalars().all()
+
+            if not topics:
+                logger.info(f"No valid topics found for user {user_id}")
+                return {
+                    "status": "success",
+                    "message": "No valid topics found",
+                    "user_id": user_id,
+                }
+
+            # 5. Get topic_ids and topic_names from loaded topics
+            topic_ids = [topic.id for topic in topics]
+            topic_names = {topic.id: topic.name for topic in topics}
+
+            # 6. Query items for all topics in time window
             items_result = await session.execute(
                 select(Item)
                 .where(Item.topic_id.in_(topic_ids))
@@ -866,7 +819,7 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
             )
             items = items_result.scalars().all()
 
-            # 5. If no items, return early
+            # 7. If no items, return early
             if not items:
                 logger.info(f"No items in time window for user {user_id}")
                 return {
@@ -877,20 +830,7 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
 
             logger.info(f"Found {len(items)} items for user digest")
 
-            # 6. Group items by topic_id
-            from collections import defaultdict
-
-            items_by_topic = defaultdict(list)
-            for item in items:
-                items_by_topic[item.topic_id].append(item)
-
-            # 7. Load topic names
-            topic_names = {}
-            for sub in user.subscriptions:
-                if sub.topic:
-                    topic_names[sub.topic_id] = sub.topic.name
-
-            # Convert items to dicts for LLM
+            # 8. Convert items to dicts for LLM
             items_dict = [
                 {
                     "id": str(item.id),
@@ -904,7 +844,7 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
                 for item in items
             ]
 
-            # 8. Generate digest using LLM
+            # 9. Generate digest using LLM
             embedding_provider = get_embedding_provider()
             llm_client = LLMClient(embedding_provider=embedding_provider)
             digest_result = await llm_client.generate_digest(
@@ -914,7 +854,7 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
                 time_window_end=window_end_dt,
             )
 
-            # 9. Render markdown
+            # 10. Render markdown
             rendered_content = render_markdown_digest(
                 topic_name="User Digest",
                 digest_result=digest_result,
@@ -922,7 +862,7 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
                 time_window_end=window_end_dt,
             )
 
-            # 10. Create UserDigest record
+            # 11. Create UserDigest record
             user_digest = UserDigest(
                 user_id=user_id,
                 topic_ids=[str(tid) for tid in topic_ids],
@@ -947,10 +887,10 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
             await session.commit()
             await llm_client.close()
 
-            # 11. Chain to notify_user_digest
+            # 12. Chain to notify_user_digest
             notify_user_digest.delay(str(user_digest.id))
 
-            # 12. Return result
+            # 13. Return result
             return {
                 "status": "success",
                 "message": "User digest generated",
@@ -970,7 +910,6 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
             raise self.retry(exc=e, countdown=countdown)
 
         return {"status": "error", "message": str(e), "user_id": user_id}
-
 
 @celery_app.task(bind=True, name="app.workers.tasks.notify_user_digest", max_retries=2)
 def notify_user_digest(self, user_digest_id: str):
@@ -1015,18 +954,20 @@ async def _notify_user_digest_async(self, user_digest_id: str):
 
             user = user_digest.user
 
-            # 2. Determine notification channels from user configuration
+            # 2. Determine notification channels from user-level enable flags
             channels = []
-            if user.feishu_webhook_url:
+            # FEISHU requires both enable flag and webhook URL
+            if user.enable_feishu and user.feishu_webhook_url:
                 channels.append(NotificationChannel.FEISHU)
-            if user.email:
+            # EMAIL requires both enable flag and email address
+            if user.enable_email and user.email:
                 channels.append(NotificationChannel.EMAIL)
 
             if not channels:
-                logger.info(f"No notification channels configured for user {user.id}")
+                logger.info(f"No notification channels enabled for user {user.id}")
                 return {
                     "status": "success",
-                    "message": "No channels configured",
+                    "message": "No channels enabled",
                     "user_digest_id": user_digest_id,
                     "channels": [],
                     "successful": 0,
@@ -1083,7 +1024,6 @@ async def _notify_user_digest_async(self, user_digest_id: str):
 __all__ = [
     "collect_data",
     "generate_digest",
-    "notify",
     # User pipeline tasks
     "collect_user_topics",
     "generate_user_digest",
