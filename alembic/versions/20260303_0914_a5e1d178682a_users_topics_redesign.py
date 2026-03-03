@@ -82,6 +82,37 @@ def upgrade() -> None:
         ON users USING GIN (topics jsonb_path_ops);
     """)
 
+    # ========================================================================
+    # DATA MIGRATION: Populate users.topics from subscriptions
+    # ========================================================================
+    # Migrate subscription data to user-level fields before dropping table:
+    # - topics: Array of unique topic UUIDs (DISTINCT to handle duplicates)
+    # - enable_feishu: OR aggregation of subscription flags (default true)
+    # - enable_email: OR aggregation of subscription flags (default true)
+    
+    op.execute("""
+        UPDATE users u
+        SET 
+            topics = COALESCE(
+                (SELECT jsonb_agg(DISTINCT s.topic_id)
+                 FROM subscriptions s
+                 WHERE s.user_id = u.id),
+                '[]'::jsonb
+            ),
+            enable_feishu = COALESCE(
+                (SELECT bool_or(s.enable_feishu)
+                 FROM subscriptions s
+                 WHERE s.user_id = u.id),
+                true
+            ),
+            enable_email = COALESCE(
+                (SELECT bool_or(s.enable_email)
+                 FROM subscriptions s
+                 WHERE s.user_id = u.id),
+                true
+            );
+    """)
+
     # Drop subscriptions table
     op.execute("""
         DROP INDEX IF EXISTS ix_subscriptions_topic_id;
