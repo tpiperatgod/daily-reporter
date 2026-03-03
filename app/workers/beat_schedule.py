@@ -1,7 +1,12 @@
 """Dynamic Celery Beat schedule management.
 
-This module handles loading topics from the database and registering
-them with Celery Beat for periodic execution.
+DECOMMISSIONED: Topic-scoped scheduling has been removed.
+
+This module previously handled loading topics from the database and registering
+them with Celery Beat for periodic execution. Now it returns empty schedules
+for API compatibility.
+
+User-scoped scheduling is handled separately at the user level.
 """
 
 from celery.schedules import crontab
@@ -32,11 +37,12 @@ async def get_enabled_topics_from_db():
         topics = result.scalars().all()
 
         # Convert to list of dicts
+        # Note: cron_expression removed - topic-scoped scheduling is decommissioned
+        # User-scoped scheduling is handled at the user level
         return [
             {
                 "id": str(topic.id),
                 "name": topic.name,
-                "cron_expression": topic.cron_expression,
                 "query": topic.query,
             }
             for topic in topics
@@ -93,65 +99,30 @@ async def update_beat_schedule():
     """
     Update Celery Beat schedule with enabled topics from database.
 
-    This function should be called periodically (e.g., every 5 minutes)
-    to sync the schedule with database changes.
+    DECOMMISSIONED: Topic-scoped scheduling has been removed.
+    User-scoped scheduling is now handled at the user level.
+    This function returns an empty schedule for compatibility.
+
+    Returns:
+        dict: Empty schedule dictionary
     """
-    logger.info("Updating beat schedule from database...")
+    logger.info(
+        "Beat schedule update requested - topic-scoped scheduling is decommissioned, returning empty schedule"
+    )
 
-    try:
-        # Fetch enabled topics
-        topics = await get_enabled_topics_from_db()
-        logger.info(f"Found {len(topics)} enabled topics")
+    # Topic-scoped pipeline is decommissioned
+    # User-scoped scheduling is handled separately via user-level cron triggers
+    schedule = {}
 
-        # Build schedule dictionary
-        schedule = {}
+    # Update Celery app's beat schedule with empty dict
+    celery_app.conf.beat_schedule = schedule
 
-        for topic in topics:
-            try:
-                # Parse cron expression with timezone
-                cron_schedule = parse_cron_expression(topic["cron_expression"], timezone_str=settings.CRON_TIMEZONE)
+    logger.info(
+        "Beat schedule updated (empty - topic-scoped scheduling decommissioned)",
+        extra={"num_tasks": 0},
+    )
 
-                # Add to schedule
-                task_name = f"collect_data_{topic['id']}"
-                schedule[task_name] = {
-                    "task": "app.workers.tasks.collect_data",
-                    "schedule": cron_schedule,
-                    "args": (topic["id"],),
-                }
-
-                logger.info(
-                    f"Registered topic '{topic['name']}' in beat schedule",
-                    extra={
-                        "topic_id": topic["id"],
-                        "cron": topic["cron_expression"],
-                        "timezone": settings.CRON_TIMEZONE,
-                    },
-                )
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to parse cron expression for topic '{topic['name']}'",
-                    extra={
-                        "topic_id": topic["id"],
-                        "cron_expression": topic["cron_expression"],
-                        "error": str(e),
-                    },
-                )
-                continue
-
-        # Update Celery app's beat schedule
-        celery_app.conf.beat_schedule = schedule
-
-        logger.info(
-            f"Beat schedule updated with {len(schedule)} tasks",
-            extra={"num_tasks": len(schedule)},
-        )
-
-        return schedule
-
-    except Exception as e:
-        logger.error(f"Failed to update beat schedule: {e}")
-        raise
+    return schedule
 
 
 # Sync wrapper for use in non-async contexts
@@ -166,27 +137,19 @@ def update_beat_schedule_sync():
     return asyncio.run(update_beat_schedule())
 
 
-# Load initial schedule from database when module is imported
-logger.info("Loading initial beat schedule from database...")
+# Load initial schedule when module is imported
+# Note: Topic-scoped scheduling is decommissioned
+logger.info("Loading initial beat schedule (topic-scoped scheduling decommissioned)...")
 try:
     initial_schedule = update_beat_schedule_sync()
     logger.info(
-        f"Successfully loaded {len(initial_schedule)} tasks from database at startup",
-        extra={"task_names": list(initial_schedule.keys())},
+        "Beat schedule loaded (empty - topic-scoped scheduling decommissioned)",
+        extra={"num_tasks": 0},
     )
 except Exception as e:
-    logger.error(f"Failed to load initial beat schedule: {e}", exc_info=True)
-    # Set empty schedule and log error
+    logger.error(f"Failed to initialize beat schedule: {e}", exc_info=True)
     celery_app.conf.beat_schedule = {}
 
-# Log final schedule state
-logger.info(
-    "Beat schedule initialization complete",
-    extra={
-        "num_tasks": len(celery_app.conf.beat_schedule),
-        "task_names": list(celery_app.conf.beat_schedule.keys()),
-    },
-)
 
 
 __all__ = ["update_beat_schedule", "update_beat_schedule_sync"]

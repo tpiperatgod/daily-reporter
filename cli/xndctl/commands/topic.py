@@ -11,7 +11,6 @@ from xndctl.utils import (
     confirm_action,
     display_success,
     display_warning,
-    validate_cron_expression,
     console
 )
 from xndctl.prompts.topic import prompt_topic_create, prompt_topic_update
@@ -27,14 +26,12 @@ def topic():
 @topic.command(name="create")
 @click.option("--name", help="Topic name (required)")
 @click.option("--query", help="Search query (required)")
-@click.option("--cron", "cron_expression", help="Cron expression (required)")
 @click.option("-p", "--prompt", is_flag=True, help="Interactive mode")
 @pass_context
 def create(
     ctx: Context,
     name: str,
     query: str,
-    cron_expression: str,
     prompt: bool
 ):
     """Create a new topic."""
@@ -47,23 +44,16 @@ def create(
                 return
         else:
             # Flag-based mode
-            if not all([name, query, cron_expression]):
-                console.print("[red]Error:[/red] --name, --query, and --cron are required")
+            if not all([name, query]):
+                console.print("[red]Error:[/red] --name and --query are required")
                 click.echo("Use -p for interactive mode")
                 return
 
-            # Validate cron expression
-            if not validate_cron_expression(cron_expression):
-                raise ValidationError(
-                    "Invalid cron expression. Expected format: 'minute hour day month weekday'\n"
-                    "Example: '0 8 * * *' (daily at 8:00 AM)"
-                )
-
             topic_data = TopicCreate(
                 name=name,
-                query=query,
-                cron_expression=cron_expression
+                query=query
             )
+
 
         # Create topic
         result = ctx.client.create_topic(topic_data)
@@ -88,7 +78,7 @@ def list_topics(ctx: Context, limit: int, offset: int):
         result = ctx.client.list_topics(limit=limit, offset=offset)
 
         # Prepare display columns
-        columns = ["id", "name", "query", "cron_expression", "is_enabled", "last_collection_timestamp"]
+        columns = ["id", "name", "query", "is_enabled", "last_collection_timestamp"]
 
         display_paginated_results(
             items=result.items,
@@ -141,7 +131,6 @@ def get_topic(ctx: Context, topic_id: str, name: str):
 @click.option("--name", "lookup_name", help="Topic name (for lookup)")
 @click.option("--new-name", help="New name")
 @click.option("--query", help="New query")
-@click.option("--cron", "cron_expression", help="New cron expression")
 @click.option("--enable/--disable", default=None, help="Enable or disable topic")
 @click.option("-p", "--prompt", is_flag=True, help="Interactive mode")
 @pass_context
@@ -151,7 +140,6 @@ def update(
     lookup_name: str,
     new_name: str,
     query: str,
-    cron_expression: str,
     enable: bool,
     prompt: bool
 ):
@@ -173,7 +161,6 @@ def update(
             update_data, confirmed = prompt_topic_update(
                 topic.name,
                 topic.query,
-                topic.cron_expression,
                 topic.is_enabled
             )
             if not confirmed:
@@ -181,25 +168,18 @@ def update(
                 return
         else:
             # Flag-based mode
-            # Validate cron if provided
-            if cron_expression and not validate_cron_expression(cron_expression):
-                raise ValidationError(
-                    "Invalid cron expression. Expected format: 'minute hour day month weekday'\n"
-                    "Example: '0 8 * * *' (daily at 8:00 AM)"
-                )
-
             update_data = TopicUpdate(
                 name=new_name,
                 query=query,
-                cron_expression=cron_expression,
                 is_enabled=enable
             )
 
             # Check if anything to update
-            if not any([new_name, query, cron_expression, enable is not None]):
+            if not any([new_name, query, enable is not None]):
                 console.print("[yellow]No updates specified[/yellow]")
                 click.echo("Use -p for interactive mode")
                 return
+
 
         # Update topic
         result = ctx.client.update_topic(topic.id, update_data)
@@ -235,7 +215,6 @@ def delete(ctx: Context, topic_id: str, name: str, yes: bool):
 
         # Show topic info
         click.echo(f"Topic: {topic.name}")
-        click.echo(f"ID: {topic.id}")
         click.echo(f"Query: {topic.query}")
         click.echo(f"Schedule: {topic.cron_expression}")
 

@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Topic, Item, Digest
+from app.db.models import Topic, Item
 from app.api.schemas import (
     TopicCreate,
     TopicUpdate,
@@ -46,7 +46,6 @@ async def create_topic(topic_data: TopicCreate, db: AsyncSession = Depends(get_d
     topic = Topic(
         name=topic_data.name,
         query=topic_data.query,
-        cron_expression=topic_data.cron_expression,
         is_enabled=True,
         last_tweet_id=topic_data.last_tweet_id,
     )
@@ -122,14 +121,9 @@ async def get_topic(topic_id: UUID, db: AsyncSession = Depends(get_db)):
     items_count = await db.execute(select(func.count(Item.id)).where(Item.topic_id == topic_id))
     total_items = items_count.scalar() or 0
 
-    # Count digests
-    digests_count = await db.execute(select(func.count(Digest.id)).where(Digest.topic_id == topic_id))
-    total_digests = digests_count.scalar() or 0
-
     # Build response
     response = TopicWithStats.from_orm(topic)
     response.total_items = total_items
-    response.total_digests = total_digests
 
     return response
 
@@ -157,8 +151,6 @@ async def update_topic(topic_id: UUID, topic_data: TopicUpdate, db: AsyncSession
         topic.name = topic_data.name
     if topic_data.query is not None:
         topic.query = topic_data.query
-    if topic_data.cron_expression is not None:
-        topic.cron_expression = topic_data.cron_expression
     if topic_data.is_enabled is not None:
         topic.is_enabled = topic_data.is_enabled
 

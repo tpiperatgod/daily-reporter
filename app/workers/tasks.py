@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.workers.celery_app import celery_app
 from app.core.logging import get_logger
-from app.db.models import Topic, Item, Digest, User, UserDigest
+from app.db.models import Topic, Item, User, UserDigest
 from app.services.provider.factory import get_provider
 from app.services.llm.client import LLMClient
 from app.services.embedding.factory import get_embedding_provider

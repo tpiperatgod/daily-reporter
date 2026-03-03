@@ -7,8 +7,7 @@ from xndctl.config import Config
 from xndctl.schemas import (
     UserCreate, UserUpdate, UserResponse, UserWithTopics,
     TopicCreate, TopicUpdate, TopicResponse, TopicWithStats,
-    DigestWithDetails,
-    TriggerResponse, UserTriggerResponse, SendDigestResponse,
+    TriggerResponse, UserTriggerResponse,
     PaginatedResponse,
 )
 
@@ -209,42 +208,4 @@ class APIClient:
             response = client.post(f"{self.base_url}/api/v1/users/{user_id}/trigger")
             data = self._handle_response(response)
             return UserTriggerResponse(**data)
-    # ========================================================================
-    # Digest Operations
-    # ========================================================================
 
-    def list_digests(self, limit: int = 100, offset: int = 0) -> PaginatedResponse:
-        """List digests with pagination."""
-        with self._get_client() as client:
-            response = client.get(
-                f"{self.base_url}/api/v1/digests",
-                params={"limit": limit, "offset": offset}
-            )
-            data = self._handle_response(response)
-            data["items"] = [DigestWithDetails(**item) for item in data["items"]]
-            return PaginatedResponse(**data)
-
-    def get_digest(self, digest_id: UUID) -> DigestWithDetails:
-        """Get digest by ID."""
-        with self._get_client() as client:
-            response = client.get(f"{self.base_url}/api/v1/digests/{digest_id}")
-            data = self._handle_response(response)
-            return DigestWithDetails(**data)
-
-    def send_digest(self, digest_id: UUID, user_id: UUID) -> SendDigestResponse:
-        """Manually send digest to a user.
-
-        Args:
-            digest_id: UUID of the digest to send
-            user_id: UUID of the user to send to
-
-        Returns:
-            SendDigestResponse with delivery statistics
-        """
-        with self._get_client() as client:
-            response = client.post(
-                f"{self.base_url}/api/v1/digests/{digest_id}/send",
-                json={"user_id": str(user_id)}
-            )
-            data = self._handle_response(response)
-            return SendDigestResponse(**data)

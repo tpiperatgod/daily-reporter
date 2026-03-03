@@ -4,7 +4,6 @@ import click
 from xndctl.utils import console
 from typing import Tuple
 from xndctl.schemas import TopicCreate, TopicUpdate
-from xndctl.utils import validate_cron_expression
 
 
 def prompt_topic_create() -> Tuple[TopicCreate, bool]:
@@ -24,32 +23,14 @@ def prompt_topic_create() -> Tuple[TopicCreate, bool]:
     # Query (required)
     query = click.prompt("Query *", type=str)
 
-    # Cron expression (required, with validation)
-    click.echo()
-    console.print("[dim]Cron format: minute hour day month weekday[/dim]")
-    console.print("[dim]Example: '0 8 * * *' (daily at 8:00 AM)[/dim]")
-    click.echo()
-
-    while True:
-        cron_expression = click.prompt("Cron Expression *", type=str)
-        if validate_cron_expression(cron_expression):
-            break
-        console.print("[red]Invalid cron expression. Expected format: 'minute hour day month weekday'[/red]")
-        console.print("[dim]Example: '0 8 * * *' (daily at 8:00 AM)[/dim]")
-
     # Create topic object
-    topic = TopicCreate(
-        name=name,
-        query=query,
-        cron_expression=cron_expression
-    )
+    topic = TopicCreate(name=name, query=query)
 
     # Display summary and confirm
     click.echo()
     console.print("[bold]Topic Summary:[/bold]")
     click.echo(f"  Name: {name}")
     click.echo(f"  Query: {query}")
-    click.echo(f"  Schedule: {cron_expression}")
     click.echo()
 
     confirmed = click.confirm("Create this topic?", default=True)
@@ -57,18 +38,12 @@ def prompt_topic_create() -> Tuple[TopicCreate, bool]:
     return topic, confirmed
 
 
-def prompt_topic_update(
-    current_name: str,
-    current_query: str,
-    current_cron: str,
-    current_enabled: bool
-) -> Tuple[TopicUpdate, bool]:
+def prompt_topic_update(current_name: str, current_query: str, current_enabled: bool) -> Tuple[TopicUpdate, bool]:
     """Interactive prompt for updating a topic.
 
     Args:
         current_name: Current topic name
         current_query: Current query
-        current_cron: Current cron expression
         current_enabled: Current enabled status
 
     Returns:
@@ -80,55 +55,22 @@ def prompt_topic_update(
     click.echo()
 
     # Name
-    name_input = click.prompt(
-        "Name",
-        default=current_name,
-        show_default=True
-    )
+    name_input = click.prompt("Name", default=current_name, show_default=True)
     name = name_input if name_input != current_name else None
 
     # Query
-    query_input = click.prompt(
-        "Query",
-        default=current_query,
-        show_default=True
-    )
+    query_input = click.prompt("Query", default=current_query, show_default=True)
     query = query_input if query_input != current_query else None
 
-    # Cron expression (with validation)
-    click.echo()
-    console.print("[dim]Cron format: minute hour day month weekday[/dim]")
-    cron_expression = None
-    while True:
-        cron_input = click.prompt(
-            "Cron Expression",
-            default=current_cron,
-            show_default=True
-        )
-        if cron_input == current_cron:
-            break
-        if validate_cron_expression(cron_input):
-            cron_expression = cron_input
-            break
-        console.print("[red]Invalid cron expression[/red]")
-
     # Enabled status
-    is_enabled_input = click.confirm(
-        "Enable topic?",
-        default=current_enabled
-    )
+    is_enabled_input = click.confirm("Enable topic?", default=current_enabled)
     is_enabled = is_enabled_input if is_enabled_input != current_enabled else None
 
     # Create update object (only include changed fields)
-    update = TopicUpdate(
-        name=name,
-        query=query,
-        cron_expression=cron_expression,
-        is_enabled=is_enabled
-    )
+    update = TopicUpdate(name=name, query=query, is_enabled=is_enabled)
 
     # Check if anything changed
-    if not any([name, query, cron_expression, is_enabled is not None]):
+    if not any([name, query, is_enabled is not None]):
         console.print("[yellow]No changes specified[/yellow]")
         return update, False
 
@@ -139,8 +81,6 @@ def prompt_topic_update(
         click.echo(f"  Name: {name}")
     if query:
         click.echo(f"  Query: {query}")
-    if cron_expression:
-        click.echo(f"  Schedule: {cron_expression}")
     if is_enabled is not None:
         click.echo(f"  Enabled: {is_enabled}")
     click.echo()

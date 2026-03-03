@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.core.config import settings
 from app.core.constants import DeliveryStatus, NotificationChannel
-from app.db.models import Digest, User, Delivery, UserDigest
+from app.db.models import User, Delivery, UserDigest
 from app.services.notifier.feishu import FeishuNotifier
 from app.services.notifier.email import EmailNotifier
 from app.services.llm.client import DigestResult
@@ -24,12 +24,11 @@ async def send_digest_to_user(
     user: User,
     channels: List[str],
     session: AsyncSession,
-    digest: Optional[Digest] = None,
-    user_digest: Optional[UserDigest] = None,
+    user_digest: UserDigest,
     idempotent: bool = False,
 ) -> List[Delivery]:
     """
-    Send digest to user via specified channels and create delivery records.
+    Send user digest to user via specified channels and create delivery records.
 
     This function handles the actual notification sending and delivery tracking
     for a single user. It creates delivery records, attempts to send notifications
@@ -39,8 +38,7 @@ async def send_digest_to_user(
         user: User object
         channels: List of channel names ("feishu", "email")
         session: Database session for creating delivery records
-        digest: Topic-scoped Digest object (mutually exclusive with user_digest)
-        user_digest: User-scoped UserDigest object (mutually exclusive with digest)
+        user_digest: UserDigest object to send
         idempotent: If True, reuse existing delivery records instead of creating new ones
                     (prevents duplicates on retry). Default: False.
 
@@ -48,35 +46,19 @@ async def send_digest_to_user(
         List of created/reused Delivery records with updated status
 
     Raises:
-        ValueError: If neither or both digest types are provided
         Exception: Individual channel failures are caught and logged but don't
                    stop the function. Status is set to "failed" in delivery record.
     """
-    # Validate mutually exclusive parameters
-    if not digest and not user_digest:
-        raise ValueError("Either digest or user_digest must be provided")
-    if digest and user_digest:
-        raise ValueError("Cannot provide both digest and user_digest")
-
     feishu_notifier = FeishuNotifier(log_only=False)
     email_notifier = EmailNotifier(log_only=settings.EMAIL_LOG_ONLY)
 
     deliveries = []
 
-    # Determine digest info for notifications
-    if digest:
-        digest_id = str(digest.id)
-        user_digest_id = None
-        topic_name = digest.topic.name
-        digest_result = DigestResult(**digest.summary_json)
-        rendered_content = digest.rendered_content
-    else:
-        digest_id = None
-        user_digest_id = str(user_digest.id)
-        topic_name = "User Digest"
-        digest_result = DigestResult(**user_digest.summary_json)
-        rendered_content = user_digest.rendered_content
-
+    # Extract user digest info for notifications
+    user_digest_id = str(user_digest.id)
+    topic_name = "User Digest"
+    digest_result = DigestResult(**user_digest.summary_json)
+    rendered_content = user_digest.rendered_content
     for channel in channels:
         # Create or reuse delivery record
         if idempotent:
@@ -84,7 +66,6 @@ async def send_digest_to_user(
             existing_result = await session.execute(
                 select(Delivery).where(
                     and_(
-                        Delivery.digest_id == digest_id,
                         Delivery.user_digest_id == user_digest_id,
                         Delivery.user_id == str(user.id),
                         Delivery.channel == channel,
@@ -101,7 +82,6 @@ async def send_digest_to_user(
             else:
                 # Create new delivery if none exists
                 delivery = Delivery(
-                    digest_id=digest_id,
                     user_digest_id=user_digest_id,
                     user_id=str(user.id),
                     channel=channel,
@@ -112,7 +92,6 @@ async def send_digest_to_user(
         else:
             # Always create new delivery (non-idempotent)
             delivery = Delivery(
-                digest_id=digest_id,
                 user_digest_id=user_digest_id,
                 user_id=str(user.id),
                 channel=channel,
@@ -148,7 +127,6 @@ async def send_digest_to_user(
                     "channel": channel,
                     "user_id": str(user.id),
                     "delivery_id": str(delivery.id),
-                    "digest_id": digest_id,
                     "user_digest_id": user_digest_id,
                 },
             )
@@ -158,7 +136,6 @@ async def send_digest_to_user(
                 extra={
                     "channel": channel,
                     "user_id": str(user.id),
-                    "digest_id": digest_id,
                     "user_digest_id": user_digest_id,
                 },
             )

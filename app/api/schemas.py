@@ -96,16 +96,7 @@ class TopicCreate(BaseModel):
 
     name: str = Field(..., max_length=255)
     query: str = Field(..., min_length=1)
-    cron_expression: str = Field(..., max_length=100)
     last_tweet_id: Optional[str] = Field(None, max_length=255)
-
-    @validator("cron_expression")
-    def validate_cron(cls, v):
-        """Validate cron expression format."""
-        parts = v.strip().split()
-        if len(parts) != 5:
-            raise ValueError("Invalid cron expression. Expected format: 'minute hour day month weekday'")
-        return v
 
 
 class TopicUpdate(BaseModel):
@@ -113,17 +104,7 @@ class TopicUpdate(BaseModel):
 
     name: Optional[str] = Field(None, max_length=255)
     query: Optional[str] = Field(None, min_length=1)
-    cron_expression: Optional[str] = Field(None, max_length=100)
     is_enabled: Optional[bool] = None
-
-    @validator("cron_expression")
-    def validate_cron(cls, v):
-        """Validate cron expression format if provided."""
-        if v is not None:
-            parts = v.strip().split()
-            if len(parts) != 5:
-                raise ValueError("Invalid cron expression. Expected format: 'minute hour day month weekday'")
-        return v
 
 
 class TopicResponse(BaseModel):
@@ -132,7 +113,6 @@ class TopicResponse(BaseModel):
     id: UUID
     name: str
     query: str
-    cron_expression: str
     is_enabled: bool
     last_collection_timestamp: Optional[datetime]
     last_tweet_id: Optional[str] = None
@@ -146,8 +126,6 @@ class TopicWithStats(TopicResponse):
     """Schema for topic with statistics."""
 
     total_items: int = 0
-    total_digests: int = 0
-
 
 # ============================================================================
 # Item Schemas
@@ -170,120 +148,6 @@ class ItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-# ============================================================================
-# Digest Schemas
-# ============================================================================
-
-
-class DigestStatsResponse(BaseModel):
-    """Schema for digest statistics."""
-
-    total_posts_analyzed: int
-    unique_authors: int
-    total_engagement: int
-    avg_engagement_per_post: float
-
-
-class DigestHighlight(BaseModel):
-    """Schema for digest highlight."""
-
-    title: str
-    summary: str
-    representative_urls: List[str]
-    score: int
-
-
-class DigestSummary(BaseModel):
-    """Schema for digest summary (from LLM)."""
-
-    headline: str
-    highlights: List[DigestHighlight]
-    themes: List[str]
-    sentiment: str
-    stats: DigestStatsResponse
-
-
-class DigestResponse(BaseModel):
-    """Schema for digest response."""
-
-    id: UUID
-    topic_id: UUID
-    time_window_start: datetime
-    time_window_end: datetime
-    summary_json: dict
-    rendered_content: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class DigestWithDetails(DigestResponse):
-    """Schema for digest with topic and delivery details."""
-
-    topic: TopicResponse
-    deliveries: List["DeliveryResponse"] = []
-
-
-# ============================================================================
-# Delivery Schemas
-# ============================================================================
-
-
-class DeliveryResponse(BaseModel):
-    """Schema for delivery response."""
-
-    id: UUID
-    digest_id: Optional[UUID] = None
-    user_digest_id: Optional[UUID] = None
-    user_id: UUID
-    channel: str
-    status: str
-    retry_count: int
-    error_msg: Optional[str]
-    sent_at: Optional[datetime]
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# ============================================================================
-# Send Digest Schemas
-# ============================================================================
-
-
-class SendDigestRequest(BaseModel):
-    """Schema for manually sending digest to a user."""
-
-    user_id: UUID
-
-
-
-class SendDigestDelivery(BaseModel):
-    """Schema for delivery info in send digest response."""
-
-    id: UUID
-    channel: str
-    status: str
-    sent_at: Optional[datetime]
-    error_msg: Optional[str]
-
-    class Config:
-        from_attributes = True
-
-
-class SendDigestResponse(BaseModel):
-    """Schema for send digest response."""
-
-    digest_id: UUID
-    user_id: UUID
-    deliveries: List[SendDigestDelivery]
-    total_sent: int
-    successful: int
-    failed: int
 
 
 
@@ -384,4 +248,3 @@ class PaginatedResponse(BaseModel):
 
 # Rebuild models that use forward references
 UserWithTopics.model_rebuild()
-DigestWithDetails.model_rebuild()
