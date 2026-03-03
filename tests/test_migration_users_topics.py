@@ -54,7 +54,7 @@ async def test_topics(async_session):
             id=uuid4(),
             name=f"Migration Test Topic {i} {uuid4()}",
             query=f"@migration_test_{i}_{uuid4()}",
-            cron_expression="0 0 * * *",
+        # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
             last_collection_timestamp=None,
             last_tweet_id=None,

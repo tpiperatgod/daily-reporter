@@ -32,7 +32,7 @@ async def test_topic(async_session):
         id=uuid4(),
         name="Test Topic",
         query="@karpathy",
-        cron_expression="0 0 * * *",
+        # cron_expression removed - topic-scoped scheduling decommissioned
         is_enabled=True,
         last_collection_timestamp=None,
         last_tweet_id=None

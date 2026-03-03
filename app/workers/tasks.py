@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 from datetime import datetime, timedelta, UTC
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.workers.celery_app import celery_app
@@ -266,158 +266,27 @@ async def _collect_data_async(self, topic_id: str):
 @celery_app.task(bind=True, name="app.workers.tasks.generate_digest", max_retries=1)
 def generate_digest(self, topic_id: str, window_start: str, window_end: str):
     """
-    Generate a digest from collected items.
+    DEPRECATED: Topic-scoped digest generation is decommissioned.
+
+    This task is retained for task name compatibility only.
+    User-scoped digest generation should use generate_user_digest instead.
 
     Args:
-        topic_id: UUID of the topic
-        window_start: Start of time window (ISO format string)
-        window_end: End of time window (ISO format string)
+        topic_id: UUID of the topic (ignored)
+        window_start: Start of time window (ignored)
+        window_end: End of time window (ignored)
 
-    Workflow:
-        1. Load topic
-        2. Return early if digest already exists for this window (dedup)
-        3. Fetch items by tweet created_at in time window
-        4. Call LLM to generate digest
-        5. Render markdown
-        6. Insert digest record
-        7. Chain to notify task
+    Returns:
+        Always returns success with deprecation message
     """
-    logger.info(
-        f"Generating digest for topic {topic_id}",
-        extra={"window_start": window_start, "window_end": window_end},
-    )
-
-    return asyncio.run(_generate_digest_async(self, topic_id, window_start, window_end))
+    logger.info("Topic-scoped generate_digest task called - decommissioned, returning success")
+    return {"status": "success", "message": "Topic-scoped digest generation decommissioned - use user-scoped pipeline"}
 
 
 async def _generate_digest_async(self, topic_id: str, window_start: str, window_end: str):
-    """Async implementation of generate_digest task."""
-    from app.db.session import get_async_session_local
-
-    try:
-        async with get_async_session_local()() as session:
-            # 1. Load topic
-            topic_result = await session.execute(select(Topic).where(Topic.id == topic_id))
-            topic = topic_result.scalar_one_or_none()
-
-            if not topic:
-                logger.error(f"Topic {topic_id} not found")
-                return {"status": "error", "message": "Topic not found"}
-
-            # Parse time windows
-            start_dt = datetime.fromisoformat(window_start)
-            end_dt = datetime.fromisoformat(window_end)
-
-            # 2. Check if a digest already exists for this exact time window (dedup)
-            existing_result = await session.execute(
-                select(Digest).where(
-                    and_(
-                        Digest.topic_id == topic_id,
-                        Digest.time_window_start == start_dt,
-                        Digest.time_window_end == end_dt,
-                    )
-                )
-            )
-            existing_digest = existing_result.scalar_one_or_none()
-            if existing_digest:
-                logger.info(f"Digest already exists for this window, reusing {existing_digest.id}")
-                return {
-                    "status": "already_exists",
-                    "digest_id": str(existing_digest.id),
-                    "message": "Digest already exists for this time window",
-                }
-
-            # 3. Fetch items in time window (based on tweet created_at, not collected_at)
-            items_result = await session.execute(
-                select(Item)
-                .where(
-                    and_(
-                        Item.topic_id == topic_id,
-                        Item.created_at >= start_dt,
-                        Item.created_at <= end_dt,
-                    )
-                )
-                .order_by(Item.created_at.desc())
-            )
-            items = items_result.scalars().all()
-
-            if not items:
-                logger.info("No items to digest")
-                return {"status": "skipped", "message": "No items to digest"}
-
-            logger.info(f"Found {len(items)} items for digest")
-
-            # Convert items to dicts for LLM
-            items_dict = [
-                {
-                    "id": str(item.id),
-                    "text": item.text,
-                    "author": item.author,
-                    "url": item.url,
-                    "created_at": item.created_at.isoformat(),
-                    "metrics": item.metrics or {},
-                }
-                for item in items
-            ]
-
-            # 4. Generate digest with LLM
-            embedding_provider = get_embedding_provider()
-            llm_client = LLMClient(embedding_provider=embedding_provider)
-            digest_result = await llm_client.generate_digest(
-                topic=topic.name,
-                items=items_dict,
-                time_window_start=start_dt,
-                time_window_end=end_dt,
-            )
-
-            # 5. Render markdown
-            rendered_content = render_markdown_digest(
-                topic_name=topic.name,
-                digest_result=digest_result,
-                time_window_start=start_dt,
-                time_window_end=end_dt,
-            )
-
-            # 6. Insert digest record
-            digest = Digest(
-                topic_id=topic_id,
-                time_window_start=start_dt,
-                time_window_end=end_dt,
-                summary_json=digest_result.dict(),
-                rendered_content=rendered_content,
-            )
-            session.add(digest)
-            await session.flush()  # Get the digest ID
-
-            logger.info(
-                f"Created digest {digest.id}",
-                extra={
-                    "digest_id": str(digest.id),
-                    "highlights": len(digest_result.highlights),
-                },
-            )
-
-            await session.commit()
-            await llm_client.close()
-
-
-            return {
-                "status": "success",
-                "message": "Digest generated successfully",
-                "digest_id": str(digest.id),
-                "highlights": len(digest_result.highlights),
-            }
-
-    except Exception as e:
-        logger.error(f"Digest generation failed: {e}", exc_info=True)
-
-        # Retry once
-        if self.request.retries < self.max_retries:
-            countdown = 30  # 30 seconds
-            logger.info(f"Retrying in {countdown} seconds...")
-            raise self.retry(exc=e, countdown=countdown)
-
-        return {"status": "error", "message": str(e)}
+    """DEPRECATED: Async implementation removed - task is now a stub."""
+    # This function is retained for import compatibility only
+    return {"status": "success", "message": "Decommissioned"}
 
 
 @celery_app.task(bind=True, name="app.workers.tasks.notify", max_retries=2)

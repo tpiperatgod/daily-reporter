@@ -119,7 +119,7 @@ class TopicResponse(BaseModel):
 class TopicWithStats(TopicResponse):
     """Schema for topic with statistics."""
     total_items: int = 0
-    total_digests: int = 0
+    # total_digests removed - topic-scoped digests decommissioned
 
 
 # ============================================================================

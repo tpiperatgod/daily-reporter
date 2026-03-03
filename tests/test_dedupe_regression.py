@@ -25,7 +25,7 @@ async def test_topic(async_session):
         id=uuid4(),
         name="Dedupe Test Topic",
         query="@test_dedupe",
-        cron_expression="0 0 * * *",
+        # cron_expression removed - topic-scoped scheduling decommissioned
         is_enabled=True,
         last_collection_timestamp=None,
         last_tweet_id=None,

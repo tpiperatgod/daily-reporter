@@ -14,7 +14,7 @@ from xndctl.utils import (
     console
 )
 from xndctl.prompts.topic import prompt_topic_create, prompt_topic_update
-from xndctl.client import NotFoundError, ValidationError
+from xndctl.client import NotFoundError
 
 
 @click.group(name="topic")
@@ -120,7 +120,7 @@ def get_topic(ctx: Context, topic_id: str, name: str):
             click.echo()
             console.print("[bold]Statistics:[/bold]")
             click.echo(f"  Total Items: {topic.total_items}")
-            click.echo(f"  Total Digests: {topic.total_digests}")
+            # Total Digests field removed - topic-scoped digests decommissioned
 
     except Exception as e:
         handle_error(e, verbose=ctx.verbose)
@@ -216,7 +216,7 @@ def delete(ctx: Context, topic_id: str, name: str, yes: bool):
         # Show topic info
         click.echo(f"Topic: {topic.name}")
         click.echo(f"Query: {topic.query}")
-        click.echo(f"Schedule: {topic.cron_expression}")
+        click.echo(f"Is Enabled: {topic.is_enabled}")
 
         # Confirm deletion
         if not yes:

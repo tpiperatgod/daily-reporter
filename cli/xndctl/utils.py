@@ -2,39 +2,18 @@
 
 import json
 import sys
+import click
 from typing import Any, Dict, List, Optional
 import yaml
 from rich.console import Console
 from rich.table import Table
 from rich import box
-from croniter import croniter
-import click
 
 
+# Console instances for output
 console = Console()
 console_err = Console(stderr=True)
 
-
-def validate_cron_expression(cron_expr: str) -> bool:
-    """Validate cron expression using croniter.
-
-    Args:
-        cron_expr: Cron expression to validate
-
-    Returns:
-        True if valid, False otherwise
-    """
-    try:
-        # Check format (5 parts)
-        parts = cron_expr.strip().split()
-        if len(parts) != 5:
-            return False
-
-        # Validate with croniter
-        croniter(cron_expr)
-        return True
-    except Exception:
-        return False
 
 
 def display_table(data: List[Dict[str, Any]], columns: Optional[List[str]] = None, title: Optional[str] = None) -> None:

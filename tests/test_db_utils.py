@@ -29,7 +29,7 @@ async def test_topics(async_session):
             id=uuid4(),
             name=f"Test Topic {i}",
             query=f"@test{i}",
-            cron_expression="0 0 * * *",
+            # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
             last_collection_timestamp=None,
             last_tweet_id=None,

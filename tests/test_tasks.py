@@ -107,7 +107,7 @@ class TestCollectUserTopics:
             id=topic_id,
             name="Disabled Topic",
             query="@test",
-            cron_expression="0 0 * * *",
+            # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=False,
         )
         # User with disabled topic in topics array
@@ -145,7 +145,7 @@ class TestCollectUserTopics:
             id=topic_id,
             name="Test Topic",
             query="@test",
-            cron_expression="0 0 * * *",
+            # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
             last_collection_timestamp=None,
             last_tweet_id=None,
@@ -215,7 +215,7 @@ class TestCollectUserTopics:
             id=topic_id,
             name="Test Topic",
             query="@test",
-            cron_expression="0 0 * * *",
+            # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
             last_collection_timestamp=None,
             last_tweet_id=None,
@@ -261,7 +261,7 @@ class TestCollectUserTopics:
             id=topic_id,
             name="Test Topic",
             query="@test",
-            cron_expression="0 0 * * *",
+            # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
             last_collection_timestamp=datetime.now(UTC) - timedelta(hours=1),
             last_tweet_id="999",
@@ -350,9 +350,8 @@ class TestNotifyUserDigest:
         mock_delivery = MagicMock()
         mock_delivery.id = uuid4()
         mock_delivery.user_digest_id = user_digest_id
-        mock_delivery.digest_id = None
+        # digest_id field removed from Delivery model
         mock_delivery.channel = NotificationChannel.EMAIL
-        mock_delivery.status = DeliveryStatus.SUCCESS
 
         # Mock session
         mock_session = AsyncMock()
@@ -383,7 +382,7 @@ class TestNotifyUserDigest:
 
         # Verify delivery has user_digest_id set
         assert mock_delivery.user_digest_id == user_digest_id
-        assert mock_delivery.digest_id is None
+        # digest_id field removed from Delivery model
 
     @pytest.mark.asyncio
     async def test_notify_user_digest_missing_digest_returns_error(self):
@@ -478,7 +477,7 @@ class TestNoSubscriptionDependencies:
             id=topic_id,
             name="Test Topic",
             query="@test",
-            cron_expression="0 0 * * *",
+            # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
         )
 
