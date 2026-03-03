@@ -21,13 +21,13 @@ X-News-Digest is an automated Twitter/X news digest system that collects tweets 
 
 1. **FastAPI Application** (`app/main.py`)
    - REST API with health checks, CORS, and auto-documented endpoints
-   - Routers: users, topics, digests
+   - Routers: users, topics
    - Async database sessions via SQLAlchemy
    - Startup checks for database, Redis, and Celery workers
 2. **Celery Workers** (`app/workers/`)
    - `celery_app.py`: Configuration and task auto-discovery
-   - `tasks.py`: Core pipeline tasks (collect_data, generate_digest, send_notifications)
-   - `beat_schedule.py`: Dynamic cron schedule from database topics
+   - `tasks.py`: Core pipeline tasks (collect_user_topics, generate_user_digest, notify_user_digest)
+   - `beat_schedule.py`: Dynamic cron schedule from database users (topic-scoped scheduling decommissioned)
    - All tasks use async/await pattern wrapped in `asyncio.run()`
 
 3. **Web UI** (`webui/`)
@@ -304,7 +304,7 @@ Alembic automatically generates compliant filenames. Never manually rename migra
 
 
 
-**Critical Migration:** The migration adding `last_tweet_id` field to Topics table enabled incremental collection.
+**Note:** All legacy migration scripts have been removed. The `alembic/versions/` directory is empty and ready for a new baseline migration. To create a fresh baseline after schema changes, run `alembic revision --autogenerate -m "baseline schema"`.
 
 ## API Documentation
 

@@ -130,8 +130,7 @@ POST /api/v1/users/{user_id}/trigger
 | | `POST /api/v1/users/{id}/trigger` | **触发用户摘要** |
 | Topics | `POST /api/v1/topics` | 创建 Topic |
 | | `GET /api/v1/topics` | 列出 Topics |
-| Digests | `GET /api/v1/digests` | 列出摘要 |
-| | `POST /api/v1/digests/{id}/send` | 手动发送（需 `user_id`） |
+
 **完整 API 文档**：运行后访问 `http://localhost:8000/docs`
 
 ## 常用命令
@@ -316,4 +315,4 @@ The subscription system has been completely removed and replaced with a simpler 
 2. **After**: User → `topics` array + user-level channel flags
 3. **Impact**: Simpler mental model - ALL topics receive notifications via ALL enabled channels
 
-For detailed migration implementation, see `alembic/versions/20260303_0914_a5e1d178682a_users_topics_redesign.py`
+**Note**: All legacy migration scripts have been removed. The `alembic/versions/` directory is empty and ready for a new baseline migration.
