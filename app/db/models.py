@@ -26,10 +26,11 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     feishu_webhook_url = Column(Text, nullable=True)
     feishu_webhook_secret = Column(String(255), nullable=True)
+    topics = Column(JSONB, nullable=False, default=list)  # Array of Topic UUID strings
+    enable_feishu = Column(Boolean, nullable=False, default=True)
+    enable_email = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
     # Relationships
-    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
     deliveries = relationship("Delivery", back_populates="user")
     user_digests = relationship("UserDigest", back_populates="user", cascade="all, delete-orphan")
 
@@ -53,7 +54,6 @@ class Topic(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
-    subscriptions = relationship("Subscription", back_populates="topic", cascade="all, delete-orphan")
     items = relationship("Item", back_populates="topic", cascade="all, delete-orphan")
     digests = relationship("Digest", back_populates="topic", cascade="all, delete-orphan")
 
@@ -63,28 +63,6 @@ class Topic(Base):
     def __repr__(self):
         return f"<Topic {self.name}>"
 
-
-class Subscription(Base):
-    """Subscription model linking users to topics."""
-
-    __tablename__ = "subscriptions"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    topic_id = Column(UUID(as_uuid=True), ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
-    enable_feishu = Column(Boolean, default=True, nullable=False)
-    enable_email = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Relationships
-    user = relationship("User", back_populates="subscriptions")
-    topic = relationship("Topic", back_populates="subscriptions")
-
-    # Unique constraint and index
-    __table_args__ = (Index("ix_subscriptions_topic_id", "topic_id"),)
-
-    def __repr__(self):
-        return f"<Subscription user={self.user_id} topic={self.topic_id}>"
 
 
 class Item(Base):

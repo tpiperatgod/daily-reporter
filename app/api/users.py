@@ -7,11 +7,11 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import User, Subscription
+from app.db.models import User
 from app.api.schemas import (
     UserCreate,
     UserResponse,
-    UserWithSubscriptions,
+    UserWithTopics,
     PaginatedResponse,
     UserTriggerResponse,
 )
@@ -81,7 +81,7 @@ async def list_users(
     Returns:
         Paginated list of users with subscriptions
     """
-    query = select(User).options(selectinload(User.subscriptions).selectinload(Subscription.topic))
+    query = select(User)
 
     # Apply search filter
     if search:
@@ -92,14 +92,14 @@ async def list_users(
     users, total = await paginate_query(db, query, limit, offset)
 
     return PaginatedResponse.create(
-        items=[UserWithSubscriptions.from_orm(u) for u in users],
+        items=[UserWithTopics.from_orm(u) for u in users],
         total=total,
         limit=limit,
         offset=offset,
     )
 
 
-@router.get("/{user_id}", response_model=UserWithSubscriptions)
+@router.get("/{user_id}", response_model=UserWithTopics)
 async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
     """
     Get user by ID with subscriptions.
@@ -118,8 +118,8 @@ async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
         db,
         User,
         user_id,
-        eager_load=[selectinload(User.subscriptions).selectinload(Subscription.topic)],
     )
+
 
     return user
 
@@ -184,16 +184,14 @@ async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_
         db,
         User,
         user_id,
-        eager_load=[selectinload(User.subscriptions)],
     )
 
-    # Check if user has any subscriptions
-    if not user.subscriptions:
+    # Check if user has any topics
+    if not user.topics:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User has no topic subscriptions",
+            detail="User has no topics",
         )
-
     # Trigger Celery task for user-scoped collection
     task = celery_app.send_task(
         "app.workers.tasks.collect_user_topics",
@@ -202,7 +200,7 @@ async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_
 
     logger.info(
         f"Manually triggered user collection for user {user_id}",
-        extra={"task_id": task.id, "topic_count": len(user.subscriptions)},
+        extra={"task_id": task.id, "topic_count": len(user.topics)},
     )
 
     return UserTriggerResponse(
@@ -210,5 +208,5 @@ async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_
         message="User topic collection triggered",
         task_id=task.id,
         user_id=user_id,
-        topic_count=len(user.subscriptions),
+        topic_count=len(user.topics),
     )

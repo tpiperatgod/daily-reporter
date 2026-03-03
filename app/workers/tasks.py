@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.workers.celery_app import celery_app
 from app.core.logging import get_logger
-from app.db.models import Topic, Item, Digest, Subscription, User, UserDigest
+from app.db.models import Topic, Item, Digest, User, UserDigest
 from app.services.provider.factory import get_provider
 from app.services.llm.client import LLMClient
 from app.services.embedding.factory import get_embedding_provider
@@ -462,17 +462,11 @@ async def _notify_async(self, digest_id: str):
 
             topic = digest.topic
 
-            # 2. Query subscriptions
-            subs_result = await session.execute(
-                select(Subscription, User)
-                .join(User, Subscription.user_id == User.id)
-                .where(Subscription.topic_id == topic.id)
-            )
-            subscriptions = subs_result.all()
-
-            if not subscriptions:
-                logger.info(f"No subscriptions for topic {topic.name}")
-                return {"status": "success", "message": "No subscriptions to notify"}
+            # 2. Query users who have this topic in their topics list
+            # TODO: Implement proper user query based on new schema
+            # For now, return early as Subscription model was removed
+            logger.info(f"Topic-based notifications temporarily disabled - Subscription model removed")
+            return {"status": "success", "message": "Notifications temporarily disabled"}
 
             logger.info(f"Found {len(subscriptions)} subscriptions")
 

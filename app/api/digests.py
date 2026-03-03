@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
-from app.db.models import Digest, Delivery, Subscription
+from app.db.models import Digest, Delivery, User
 from app.api.schemas import (
     DigestWithDetails,
     PaginatedResponse,
@@ -162,15 +162,15 @@ async def get_digest_content(digest_id: UUID, db: AsyncSession = Depends(get_db)
 )
 async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSession = Depends(get_db)):
     """
-    Manually send a digest to a specific subscription.
+    Manually send a digest to a specific user.
 
     This endpoint allows on-demand delivery of a digest outside the automated
-    notification workflow. It respects the subscription's channel preferences
+    notification workflow. It respects the user's channel preferences
     (enable_feishu, enable_email) and creates new delivery records for tracking.
 
     Args:
         digest_id: UUID of the digest to send
-        request: Request body with subscription_id
+        request: Request body with user_id
         db: Database session
 
     Returns:
@@ -178,8 +178,7 @@ async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSess
 
     Raises:
         HTTPException:
-            - 404 if digest or subscription not found
-            - 400 if subscription topic doesn't match digest topic
+            - 404 if digest or user not found
             - 400 if no channels enabled or user missing required config
     """
     from app.services.notifier.delivery import send_digest_to_user
@@ -192,53 +191,39 @@ async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSess
         logger.warning(f"Digest not found: {digest_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Digest not found")
 
-    # 2. Load subscription with user and topic (eager loading)
-    subscription_result = await db.execute(
-        select(Subscription)
-        .options(selectinload(Subscription.user), selectinload(Subscription.topic))
-        .where(Subscription.id == request.subscription_id)
-    )
-    subscription = subscription_result.scalar_one_or_none()
+    # 2. Load user with eager loading
+    user_result = await db.execute(select(User).where(User.id == request.user_id))
+    user = user_result.scalar_one_or_none()
 
-    if not subscription:
-        logger.warning(f"Subscription not found: {request.subscription_id}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
+    if not user:
+        logger.warning(f"User not found: {request.user_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # 3. Verify subscription topic matches digest topic
-    if subscription.topic_id != digest.topic_id:
-        logger.warning(f"Topic mismatch: subscription topic={subscription.topic_id}, digest topic={digest.topic_id}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Subscription topic does not match digest topic",
-        )
-
-    # 4. Determine channels from subscription settings
+    # 3. Determine channels from user settings
     channels = []
-    if subscription.enable_feishu:
+    if user.enable_feishu:
         channels.append(NotificationChannel.FEISHU)
-    if subscription.enable_email:
+    if user.enable_email:
         channels.append(NotificationChannel.EMAIL)
 
     if not channels:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No channels enabled in subscription",
+            detail="No channels enabled for user",
         )
 
-    # 5. Validate user configurations
-    user = subscription.user
+    # 4. Validate user configurations
     if NotificationChannel.FEISHU in channels and not user.feishu_webhook_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User has Feishu enabled but no webhook URL configured",
         )
 
-    # 6. Send notifications and create delivery records
+    # 5. Send notifications and create delivery records
     logger.info(
-        f"Manually sending digest {digest_id} to subscription {request.subscription_id}",
+        f"Manually sending digest {digest_id} to user {request.user_id}",
         extra={
             "digest_id": str(digest_id),
-            "subscription_id": str(request.subscription_id),
             "user_id": str(user.id),
             "channels": channels,
         },
@@ -247,7 +232,7 @@ async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSess
     deliveries = await send_digest_to_user(user=user, channels=channels, session=db, digest=digest)
     await db.commit()
 
-    # 7. Build response
+    # 6. Build response
     successful = sum(1 for d in deliveries if d.status == DeliveryStatus.SUCCESS)
     failed = sum(1 for d in deliveries if d.status == DeliveryStatus.FAILED)
 
@@ -255,7 +240,7 @@ async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSess
         f"Digest sent: {successful} successful, {failed} failed",
         extra={
             "digest_id": str(digest_id),
-            "subscription_id": str(request.subscription_id),
+            "user_id": str(request.user_id),
             "successful": successful,
             "failed": failed,
         },
@@ -263,7 +248,7 @@ async def send_digest(digest_id: UUID, request: SendDigestRequest, db: AsyncSess
 
     return SendDigestResponse(
         digest_id=digest_id,
-        subscription_id=request.subscription_id,
+        user_id=request.user_id,
         deliveries=[SendDigestDelivery.from_orm(d) for d in deliveries],
         total_sent=len(deliveries),
         successful=successful,

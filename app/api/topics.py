@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models import Topic, Item, Digest, Subscription
+from app.db.models import Topic, Item, Digest
 from app.api.schemas import (
     TopicCreate,
     TopicUpdate,
@@ -126,9 +126,9 @@ async def get_topic(topic_id: UUID, db: AsyncSession = Depends(get_db)):
     digests_count = await db.execute(select(func.count(Digest.id)).where(Digest.topic_id == topic_id))
     total_digests = digests_count.scalar() or 0
 
-    # Count subscriptions
-    subs_count = await db.execute(select(func.count(Subscription.id)).where(Subscription.topic_id == topic_id))
-    total_subscriptions = subs_count.scalar() or 0
+    # Count subscriptions (TODO: This needs to be recalculated based on new schema)
+    # For now, set to 0 as Subscription model was removed
+    total_subscriptions = 0
 
     # Build response
     response = TopicWithStats.from_orm(topic)

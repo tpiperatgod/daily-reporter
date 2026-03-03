@@ -22,7 +22,42 @@ class UserCreate(BaseModel):
         max_length=255,
         description="HMAC secret for Feishu webhook signature verification",
     )
+    topics: List[str] = Field(default_factory=list, max_length=100)
+    enable_feishu: bool = True
+    enable_email: bool = True
 
+    @validator("topics")
+    def validate_topics(cls, v):
+        """Validate topics field: UUID format, max count, no duplicates."""
+        # Validate max count
+        if len(v) > 100:
+            raise ValueError("Maximum 100 topics per user exceeded")
+
+        # Validate UUID format and detect duplicates
+        seen = set()
+        duplicates = set()
+        invalid_uuids = []
+
+        for item in v:
+            # Check UUID format
+            try:
+                UUID(item)
+            except ValueError:
+                invalid_uuids.append(item)
+                continue
+
+            # Check for duplicates
+            if item in seen:
+                duplicates.add(item)
+            seen.add(item)
+
+        if invalid_uuids:
+            raise ValueError(f"Invalid UUID format: {invalid_uuids}")
+
+        if duplicates:
+            raise ValueError(f"Duplicate topic IDs not allowed: {list(duplicates)}")
+
+        return v
 
 class UserResponse(BaseModel):
     """Schema for user response."""
@@ -34,16 +69,18 @@ class UserResponse(BaseModel):
     feishu_webhook_secret: Optional[str] = Field(
         None, description="HMAC secret for Feishu webhook (masked for security)"
     )
+    topics: List[str] = []  # List of Topic UUID strings
+    enable_feishu: bool = True
+    enable_email: bool = True
     created_at: datetime
 
     class Config:
         from_attributes = True
 
+class UserWithTopics(UserResponse):
+    """Schema for user with topic details."""
 
-class UserWithSubscriptions(UserResponse):
-    """Schema for user with subscription details."""
-
-    subscriptions: List["SubscriptionWithTopic"] = []
+    # Inherits all fields from UserResponse including topics
 
     class Config:
         from_attributes = True
@@ -112,59 +149,6 @@ class TopicWithStats(TopicResponse):
     total_digests: int = 0
     total_subscriptions: int = 0
 
-
-# ============================================================================
-# Subscription Schemas
-# ============================================================================
-
-
-class SubscriptionCreate(BaseModel):
-    """Schema for creating a subscription."""
-
-    user_id: UUID
-    topic_id: UUID
-    enable_feishu: bool = True
-    enable_email: bool = True
-
-
-class SubscriptionUpdate(BaseModel):
-    """Schema for updating a subscription."""
-
-    enable_feishu: Optional[bool] = None
-    enable_email: Optional[bool] = None
-
-
-class SubscriptionResponse(BaseModel):
-    """Schema for subscription response."""
-
-    id: UUID
-    user_id: UUID
-    topic_id: UUID
-    enable_feishu: bool
-    enable_email: bool
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class SubscriptionWithTopic(SubscriptionResponse):
-    """Schema for subscription with topic details (used in user listings)."""
-
-    topic: Optional[TopicResponse] = None
-
-    class Config:
-        from_attributes = True
-
-
-class SubscriptionWithDetails(SubscriptionResponse):
-    """Schema for subscription with user and topic details."""
-
-    user: UserResponse
-    topic: TopicResponse
-
-    class Config:
-        from_attributes = True
 
 
 # ============================================================================
@@ -274,9 +258,13 @@ class DeliveryResponse(BaseModel):
 
 
 class SendDigestRequest(BaseModel):
+    """Schema for manually sending digest to a user."""
+
+    user_id: UUID
+
     """Schema for manually sending digest to a subscription."""
 
-    subscription_id: UUID
+
 
 
 class SendDigestDelivery(BaseModel):
@@ -296,11 +284,20 @@ class SendDigestResponse(BaseModel):
     """Schema for send digest response."""
 
     digest_id: UUID
-    subscription_id: UUID
+    user_id: UUID
     deliveries: List[SendDigestDelivery]
     total_sent: int
     successful: int
     failed: int
+
+    """Schema for send digest response."""
+
+    digest_id: UUID
+    subscription_id: UUID
+    deliveries: List[SendDigestDelivery]
+    total_sent: int
+    successful: int
+
 
 
 # ============================================================================
@@ -399,5 +396,5 @@ class PaginatedResponse(BaseModel):
 # ============================================================================
 
 # Rebuild models that use forward references
-UserWithSubscriptions.model_rebuild()
+UserWithTopics.model_rebuild()
 DigestWithDetails.model_rebuild()
