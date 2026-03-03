@@ -24,6 +24,8 @@ jobs:
       - run: ruff check app/
       - run: ruff format --check app/
 
+      - name: Check migration filenames
+        run: python scripts/check_migration_names.py
   test:
     needs: lint
     runs-on: ubuntu-latest

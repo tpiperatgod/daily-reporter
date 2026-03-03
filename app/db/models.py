@@ -46,7 +46,6 @@ class Topic(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     query = Column(Text, nullable=False)
-    cron_expression = Column(String(100), nullable=False)
     is_enabled = Column(Boolean, default=True, nullable=False)
     last_collection_timestamp = Column(DateTime(timezone=True), nullable=True)
     last_tweet_id = Column(String(255), nullable=True, index=True)
@@ -55,7 +54,6 @@ class Topic(Base):
 
     # Relationships
     items = relationship("Item", back_populates="topic", cascade="all, delete-orphan")
-    digests = relationship("Digest", back_populates="topic", cascade="all, delete-orphan")
 
     # Index for scheduling queries
     __table_args__ = (Index("ix_topics_enabled_last_run", "is_enabled", "last_collection_timestamp"),)
@@ -96,30 +94,6 @@ class Item(Base):
         return f"<Item {self.source_id}>"
 
 
-class Digest(Base):
-    """Digest model for storing generated summaries."""
-
-    __tablename__ = "digests"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    topic_id = Column(UUID(as_uuid=True), ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
-    time_window_start = Column(DateTime(timezone=True), nullable=False)
-    time_window_end = Column(DateTime(timezone=True), nullable=False)
-    summary_json = Column(JSONB, nullable=False)  # Structured DigestResult
-    rendered_content = Column(Text, nullable=False)  # Markdown
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Relationships
-    topic = relationship("Topic", back_populates="digests")
-    deliveries = relationship("Delivery", back_populates="digest", cascade="all, delete-orphan")
-
-    # Index for efficient queries
-    __table_args__ = (Index("ix_digests_topic_created", "topic_id", "created_at"),)
-
-    def __repr__(self):
-        return f"<Digest {self.id}>"
-
-
 class UserDigest(Base):
     """User-scoped digest aggregating multiple topics."""
 
@@ -151,7 +125,6 @@ class Delivery(Base):
     __tablename__ = "deliveries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    digest_id = Column(UUID(as_uuid=True), ForeignKey("digests.id", ondelete="CASCADE"), nullable=True)
     user_digest_id = Column(UUID(as_uuid=True), ForeignKey("user_digests.id", ondelete="CASCADE"), nullable=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     channel = Column(String(50), nullable=False)  # 'feishu' or 'email'
@@ -162,16 +135,13 @@ class Delivery(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
-    digest = relationship("Digest", back_populates="deliveries")
     user_digest = relationship("UserDigest", back_populates="deliveries")
     user = relationship("User", back_populates="deliveries")
 
     # Index for efficient queries
     __table_args__ = (
-        Index("ix_deliveries_digest_status", "digest_id", "status"),
         Index("ix_deliveries_user_digest_status", "user_digest_id", "status"),
     )
 
     def __repr__(self):
-        digest_ref = f"digest={self.digest_id}" if self.digest_id else f"user_digest={self.user_digest_id}"
-        return f"<Delivery {self.channel} - {self.status} {digest_ref}>"
+        digest_ref = f"user_digest={self.user_digest_id}" if self.user_digest_id else "no_digest"
