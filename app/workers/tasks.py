@@ -576,8 +576,13 @@ async def _collect_user_topics_async(self, user_id: str):
             # 8. Chain to generate_user_digest if we have new items
             if all_new_items:
                 logger.info("Chaining to generate_user_digest task")
+                # Build context snapshot from resolved topics
+                topic_ids = [str(topic.id) for topic in topics]
+                topic_names = {str(topic.id): topic.name for topic in topics}
                 generate_user_digest.delay(
                     user_id=user_id,
+                    topic_ids=topic_ids,
+                    topic_names=topic_names,
                     window_start=min_item_created_at.isoformat(),
                     window_end=max_item_created_at.isoformat(),
                 )
@@ -599,96 +604,115 @@ async def _collect_user_topics_async(self, user_id: str):
         }
 
 @celery_app.task(bind=True, name="app.workers.tasks.generate_user_digest", max_retries=1)
-def generate_user_digest(self, user_id: str, window_start: str, window_end: str):
+def generate_user_digest(
+    self,
+    user_id: str,
+    topic_ids: list[str],
+    topic_names: dict[str, str],
+    window_start: str,
+    window_end: str,
+):
     """
     Generate a personalized digest for a user from all topics in user.topics.
 
     Args:
         user_id: UUID of the user
+        topic_ids: List of topic UUIDs (strings) for this digest
+        topic_names: Mapping of topic_id -> topic_name for display
         window_start: Start of time window (ISO format string)
         window_end: End of time window (ISO format string)
 
     Workflow:
-        1. Load user and their topics list
-        2. Fetch items from all topics in time window
+        1. Parse time window
+        2. Query items from all topic_ids in time window
         3. Call LLM to generate personalized digest
         4. Store user-specific digest
         5. Chain to notify_user_digest
     """
     logger.info(
         f"Generating user digest for user {user_id}",
-        extra={"window_start": window_start, "window_end": window_end},
+        extra={"window_start": window_start, "window_end": window_end, "topic_count": len(topic_ids)},
     )
-    return asyncio.run(_generate_user_digest_async(self, user_id, window_start, window_end))
+    return asyncio.run(_generate_user_digest_async(self, user_id, topic_ids, topic_names, window_start, window_end))
 
 
-async def _generate_user_digest_async(self, user_id: str, window_start: str, window_end: str):
-    """Async implementation of generate_user_digest task."""
+async def _generate_user_digest_async(
+    self,
+    user_id: str,
+    topic_ids: list[str],
+    topic_names: dict[str, str],
+    window_start: str,
+    window_end: str,
+):
+    """Async implementation of generate_user_digest task.
+
+    Context handoff contract (Task 7):
+    - topic_ids: Required list of topic UUID strings
+    - topic_names: Required mapping of topic_id -> topic_name
+    - window_start/window_end: Required ISO format timestamp strings
+
+    Error semantics (Task 9):
+    - Deterministic validation errors return error dicts without retry
+    - Transient execution errors are retry-eligible
+    """
     from uuid import UUID
     from app.db.session import get_async_session_local
 
+    # Helper for deterministic validation errors (Task 9)
+    def _make_validation_error(message: str) -> dict:
+        """Create a deterministic error response (no retry)."""
+        return {
+            "status": "error",
+            "message": message,
+            "user_id": user_id,
+            "_deterministic": True,  # Flag for testing/debugging
+        }
+
     try:
         async with get_async_session_local()() as session:
-            # 1. Parse time window
-            window_start_dt = datetime.fromisoformat(window_start)
-            window_end_dt = datetime.fromisoformat(window_end)
+            # 1. Validate required context parameters (deterministic - no retry)
+            if not topic_ids:
+                logger.error("topic_ids is required but empty")
+                return _make_validation_error("topic_ids required")
 
-            # 2. Load user (no eager loading needed - topics is JSONB column)
-            result = await session.execute(select(User).where(User.id == user_id))
-            user = result.scalar_one_or_none()
+            if topic_names is None:
+                logger.error("topic_names is required but None")
+                return _make_validation_error("topic_names required")
 
-            if not user:
-                logger.error(f"User {user_id} not found")
-                return {"status": "error", "message": "User not found", "user_id": user_id}
+            if not window_start:
+                logger.error("window_start is required but empty")
+                return _make_validation_error("window_start required")
 
-            # 3. Handle empty topics list
-            if not user.topics:
-                logger.info(f"User {user_id} has no topics")
-                return {
-                    "status": "success",
-                    "message": "User has no topics configured",
-                    "user_id": user_id,
-                }
+            if not window_end:
+                logger.error("window_end is required but empty")
+                return _make_validation_error("window_end required")
 
-            # 4. Load Topic objects from user.topics UUID strings
+            # 2. Parse time window (deterministic - no retry on format errors)
             try:
-                topic_uuids = [UUID(tid) for tid in user.topics]
+                window_start_dt = datetime.fromisoformat(window_start)
+                window_end_dt = datetime.fromisoformat(window_end)
             except ValueError as e:
-                logger.error(f"Invalid UUID in user.topics for user {user_id}: {e}")
-                return {
-                    "status": "error",
-                    "message": f"Invalid topic UUID in user configuration: {e}",
-                    "user_id": user_id,
-                }
+                logger.error(f"Invalid ISO timestamp in window parameters: {e}")
+                return _make_validation_error(f"Invalid window timestamp format: {e}")
 
-            topics_result = await session.execute(
-                select(Topic).where(Topic.id.in_(topic_uuids))
-            )
-            topics = topics_result.scalars().all()
+            # 3. Parse topic_ids to UUIDs (deterministic - no retry on format errors)
+            try:
+                topic_uuids = [UUID(tid) for tid in topic_ids]
+            except ValueError as e:
+                logger.error(f"Invalid UUID in topic_ids: {e}")
+                return _make_validation_error(f"Invalid topic UUID in topic_ids: {e}")
 
-            if not topics:
-                logger.info(f"No valid topics found for user {user_id}")
-                return {
-                    "status": "success",
-                    "message": "No valid topics found",
-                    "user_id": user_id,
-                }
-
-            # 5. Get topic_ids and topic_names from loaded topics
-            topic_ids = [topic.id for topic in topics]
-            topic_names = {topic.id: topic.name for topic in topics}
-
-            # 6. Query items for all topics in time window
+            # 4. Query items for all topics in time window (transient - retry eligible)
             items_result = await session.execute(
                 select(Item)
-                .where(Item.topic_id.in_(topic_ids))
+                .where(Item.topic_id.in_(topic_uuids))
                 .where(Item.created_at >= window_start_dt)
                 .where(Item.created_at <= window_end_dt)
                 .order_by(Item.created_at.desc())
             )
             items = items_result.scalars().all()
 
-            # 7. If no items, return early
+            # 5. If no items, return early (deterministic - no items found)
             if not items:
                 logger.info(f"No items in time window for user {user_id}")
                 return {
@@ -699,7 +723,7 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
 
             logger.info(f"Found {len(items)} items for user digest")
 
-            # 8. Convert items to dicts for LLM
+            # 6. Convert items to dicts for LLM
             items_dict = [
                 {
                     "id": str(item.id),
@@ -708,12 +732,12 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
                     "url": item.url,
                     "created_at": item.created_at.isoformat(),
                     "metrics": item.metrics or {},
-                    "topic_name": topic_names.get(item.topic_id, "Unknown"),
+                    "topic_name": topic_names.get(str(item.topic_id), "Unknown"),
                 }
                 for item in items
             ]
 
-            # 9. Generate digest using LLM
+            # 7. Generate digest using LLM (transient - retry eligible)
             embedding_provider = get_embedding_provider()
             llm_client = LLMClient(embedding_provider=embedding_provider)
             digest_result = await llm_client.generate_digest(
@@ -723,7 +747,7 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
                 time_window_end=window_end_dt,
             )
 
-            # 10. Render markdown
+            # 8. Render markdown
             rendered_content = render_markdown_digest(
                 topic_name="User Digest",
                 digest_result=digest_result,
@@ -731,10 +755,10 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
                 time_window_end=window_end_dt,
             )
 
-            # 11. Create UserDigest record
+            # 9. Create UserDigest record (transient - retry eligible)
             user_digest = UserDigest(
                 user_id=user_id,
-                topic_ids=[str(tid) for tid in topic_ids],
+                topic_ids=[str(tid) for tid in topic_uuids],
                 time_window_start=window_start_dt,
                 time_window_end=window_end_dt,
                 summary_json=digest_result.model_dump(),
@@ -756,10 +780,10 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
             await session.commit()
             await llm_client.close()
 
-            # 12. Chain to notify_user_digest
+            # 10. Chain to notify_user_digest
             notify_user_digest.delay(str(user_digest.id))
 
-            # 13. Return result
+            # 11. Return result
             return {
                 "status": "success",
                 "message": "User digest generated",
@@ -772,8 +796,20 @@ async def _generate_user_digest_async(self, user_id: str, window_start: str, win
     except Exception as e:
         logger.error(f"User digest generation failed: {e}", exc_info=True)
 
-        # Retry once
-        if self.request.retries < self.max_retries:
+        # Task 9: Retry guard - only retry transient execution failures
+        # Robustness: Handle cases where self.request or self.max_retries might not be available
+        try:
+            can_retry = (
+                hasattr(self, 'request') and
+                hasattr(self.request, 'retries') and
+                hasattr(self, 'max_retries') and
+                self.request.retries < self.max_retries
+            )
+        except (AttributeError, TypeError):
+            # In tests or unusual contexts, default to no retry
+            can_retry = False
+
+        if can_retry:
             countdown = 30  # 30 seconds
             logger.info(f"Retrying in {countdown} seconds...")
             raise self.retry(exc=e, countdown=countdown)
