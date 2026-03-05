@@ -8,6 +8,29 @@ from xndctl.utils import handle_error, display_success, display_warning, display
 from xndctl.schemas import UserWithTopics
 
 
+
+def prompt_time_window() -> str:
+    """Prompt user to select time window for data collection."""
+    click.echo()
+    console.print("[bold]Select Time Window:[/bold]")
+    click.echo("  1. 4h  - Last 4 hours")
+    click.echo("  2. 12h - Last 12 hours")
+    click.echo("  3. 24h - Last 24 hours (default)")
+
+    while True:
+        try:
+            user_input = click.prompt("\nSelect time window (1-3)", type=int, default=3)
+            if user_input == 1:
+                return "4h"
+            elif user_input == 2:
+                return "12h"
+            elif user_input == 3:
+                return "24h"
+            console.print("[red]Invalid selection. Choose 1-3[/red]")
+        except Exception:
+            console.print("[red]Invalid input. Enter a number 1-3[/red]")
+
+
 def prompt_select_user(users: List[UserWithTopics]) -> Optional[UUID]:
     click.echo()
     console.print("[bold]Select User:[/bold]")
@@ -29,8 +52,15 @@ def prompt_select_user(users: List[UserWithTopics]) -> Optional[UUID]:
 
 @click.command(name="trigger")
 @click.option("-p", "--prompt", is_flag=True, required=True, help="Interactive mode (required)")
+@click.option(
+    "-t", "--time-window",
+    type=click.Choice(["4h", "12h", "24h", "1d"], case_sensitive=True),
+    default=None,
+    help="Time window for data collection (default: 24h)"
+)
 @pass_context
-def trigger(ctx: Context, prompt: bool):
+def trigger(ctx: Context, prompt: bool, time_window: Optional[str]):
+
     try:
         users_result = ctx.client.list_users(limit=1000)
 
@@ -77,13 +107,23 @@ def trigger(ctx: Context, prompt: bool):
             display_warning("Trigger cancelled")
             return
 
-        display_info(f"Triggering digest collection for user: {selected_user.name or selected_user.email}")
+        # Determine time window
+        if time_window is None:
+            time_window = prompt_time_window()
 
-        result = ctx.client.trigger_user(selected_user_id)
+        # Normalize 1d to 24h
+        if time_window == "1d":
+            time_window = "24h"
+
+        display_info(f"Triggering digest collection for user: {selected_user.name or selected_user.email}")
+        display_info(f"Time window: {time_window}")
+
+        result = ctx.client.trigger_user(selected_user_id, time_window=time_window)
         task_id = result.task_id
 
         display_success(f"Digest collection triggered for user: {selected_user.name or selected_user.email}")
         console.print(f"[dim]Topics: {result.topic_count}[/dim]")
+        console.print(f"[dim]Time Window: {time_window}[/dim]")
         console.print(f"[dim]Task ID: {task_id}[/dim]")
         console.print(f"[dim]User ID: {selected_user_id}[/dim]")
     except Exception as e:
