@@ -57,11 +57,52 @@ class TestTriggerUserCollection:
         assert result.task_id == "test-task-id"
         assert result.user_id == mock_user.id
         assert result.topic_count == 2
+        assert result.time_window == "24h"
 
         # Verify Celery task was called
         mock_celery_app.send_task.assert_called_once_with(
             "app.workers.tasks.collect_user_topics",
-            args=[str(mock_user.id)],
+            args=[str(mock_user.id), "24h"],
+        )
+
+    @pytest.mark.asyncio
+    @patch("app.api.users.get_entity_or_404")
+    @patch("app.api.users.celery_app")
+    async def test_trigger_user_collection_custom_time_window(self, mock_celery_app, mock_get_entity, mock_user):
+        mock_get_entity.return_value = mock_user
+        mock_task = MagicMock()
+        mock_task.id = "test-task-id"
+        mock_celery_app.send_task.return_value = mock_task
+
+        mock_db = AsyncMock()
+
+        result = await trigger_user_collection(mock_user.id, mock_db, time_window="4h")
+
+        assert result.status == "success"
+        assert result.time_window == "4h"
+        mock_celery_app.send_task.assert_called_once_with(
+            "app.workers.tasks.collect_user_topics",
+            args=[str(mock_user.id), "4h"],
+        )
+
+    @pytest.mark.asyncio
+    @patch("app.api.users.get_entity_or_404")
+    @patch("app.api.users.celery_app")
+    async def test_trigger_user_collection_normalizes_1d(self, mock_celery_app, mock_get_entity, mock_user):
+        mock_get_entity.return_value = mock_user
+        mock_task = MagicMock()
+        mock_task.id = "test-task-id"
+        mock_celery_app.send_task.return_value = mock_task
+
+        mock_db = AsyncMock()
+
+        result = await trigger_user_collection(mock_user.id, mock_db, time_window="1d")
+
+        assert result.status == "success"
+        assert result.time_window == "24h"
+        mock_celery_app.send_task.assert_called_once_with(
+            "app.workers.tasks.collect_user_topics",
+            args=[str(mock_user.id), "24h"],
         )
 
     @pytest.mark.asyncio

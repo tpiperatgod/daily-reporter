@@ -6,7 +6,7 @@ from uuid import uuid4, UUID
 from unittest.mock import AsyncMock, patch, MagicMock
 from dataclasses import dataclass
 from app.db.models import Topic, User
-from app.workers.tasks import _collect_user_topics_async
+from app.workers.tasks import _collect_user_topics_async, parse_time_window
 
 
 @dataclass
@@ -50,6 +50,10 @@ def create_mock_session_local(mock_session):
     callable_mock = MagicMock(return_value=async_context_manager)
 
     return callable_mock
+
+
+def test_parse_time_window_supports_1d_alias():
+    assert parse_time_window("1d") == 24
 
 
 class TestCollectUserTopics:
@@ -118,7 +122,9 @@ class TestCollectUserTopics:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = [MagicMock()]
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -171,7 +177,9 @@ class TestCollectUserTopics:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = [MagicMock()]
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -229,7 +237,9 @@ class TestCollectUserTopics:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = []
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -427,7 +437,9 @@ class TestNoSubscriptionDependencies:
         mock_session = AsyncMock()
         user_result = MagicMock()
         user_result.scalar_one_or_none.return_value = user
-        mock_session.execute.return_value = user_result
+        topic_result = MagicMock()
+        topic_result.scalars.return_value.all.return_value = []
+        mock_session.execute.side_effect = [user_result, topic_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -438,8 +450,7 @@ class TestNoSubscriptionDependencies:
         # Verify user.topics was accessed
         assert user.topics == [topic_id]
         assert result["status"] == "success"
-        # When topic UUID is invalid or not found, the task processes 0 topics
-        assert result["message"] == "Collected 0 items from 0 topics"
+        assert result["message"] == "No valid topics found"
 
     @pytest.mark.asyncio
     async def test_trigger_rejects_empty_topics_list(self):
@@ -489,7 +500,9 @@ class TestNoSubscriptionDependencies:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = []
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -507,7 +520,6 @@ class TestNoSubscriptionDependencies:
         # Verify topics were loaded from user.topics array
         assert result["status"] == "success"
         assert result["topics_processed"] == 1
-
 
 
 # =============================================================================
@@ -584,7 +596,9 @@ class TestCollectContextPayload:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = [MagicMock()]
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -644,7 +658,9 @@ class TestCollectContextPayload:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = [MagicMock()]
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -697,7 +713,9 @@ class TestCollectContextPayload:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = [MagicMock()]
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -753,7 +771,9 @@ class TestCollectContextPayload:
         user_result.scalar_one_or_none.return_value = user
         topic_result = MagicMock()
         topic_result.scalars.return_value.all.return_value = [topic]
-        mock_session.execute.side_effect = [user_result, topic_result]
+        items_window_result = MagicMock()
+        items_window_result.scalars.return_value.all.return_value = [MagicMock()]
+        mock_session.execute.side_effect = [user_result, topic_result, items_window_result]
 
         mock_session_local = create_mock_session_local(mock_session)
 
@@ -866,6 +886,7 @@ class TestGenerateFastPath:
             assert "items_analyzed" in result
             assert "topics_included" in result
             mock_notify.delay.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_generate_fast_path_no_user_requery_from_database(self):
         """Sentinel: generate must NOT query User table when context provided."""
@@ -909,6 +930,7 @@ class TestGenerateFastPath:
             for call in mock_session.execute.call_args_list:
                 call_str = str(call)
                 assert "User" not in call_str, "Should NOT query User table"
+
     @pytest.mark.asyncio
     async def test_generate_fast_path_no_topic_requery_from_database(self):
         """Sentinel: generate must NOT query Topic table when context provided."""
@@ -951,9 +973,8 @@ class TestGenerateFastPath:
             # Verify NO Topic table query
             for call in mock_session.execute.call_args_list:
                 call_str = str(call)
-                assert "Topic" not in call_str or "Item.topic_id" in call_str, (
-                    "Should NOT query Topic table"
-                )
+                assert "Topic" not in call_str or "Item.topic_id" in call_str, "Should NOT query Topic table"
+
     @pytest.mark.asyncio
     async def test_generate_fast_path_output_shape_success_path(self):
         """Contract: generate must return correct output shape and chain to notify."""
@@ -1024,6 +1045,8 @@ class TestGenerateFastPath:
             assert "topics_included" in result
             # Verify notify chaining
             mock_notify.delay.assert_called_once()
+
+
 class TestGenerateInvalidContext:
     """Task 4: Invalid context and validation tests (RED tests)."""
 
@@ -1196,9 +1219,7 @@ class TestGenerateNoCompat:
             window_idx = params.index("window_start")
             topic_idx = params.index("topic_ids")
             # topic_ids should come before window_start to break old pattern
-            assert topic_idx < window_idx, (
-                "topic_ids must come before window_start to prevent old call pattern"
-            )
+            assert topic_idx < window_idx, "topic_ids must come before window_start to prevent old call pattern"
 
     def test_generate_no_compat_context_params_required(self):
         """Contract: context parameters must not have default values (required)."""
@@ -1210,9 +1231,7 @@ class TestGenerateNoCompat:
         # Verify topic_ids and topic_names have no defaults
         for param_name in ["topic_ids", "topic_names"]:
             param = sig.parameters[param_name]
-            assert param.default == param.empty, (
-                f"{param_name} must not have default value (must be required)"
-            )
+            assert param.default == param.empty, f"{param_name} must not have default value (must be required)"
 
 
 class TestGenerateSentinel:
@@ -1261,9 +1280,7 @@ class TestGenerateSentinel:
             for call in mock_session.execute.call_args_list:
                 call_str = str(call)
                 assert "User" not in call_str, "Sentinel: Should NOT query User table"
-                assert (
-                    "Topic" not in call_str or "Item.topic_id" in call_str
-                ), "Sentinel: Should NOT query Topic table"
+                assert "Topic" not in call_str or "Item.topic_id" in call_str, "Sentinel: Should NOT query Topic table"
 
 
 # =============================================================================
@@ -1403,6 +1420,7 @@ class TestGenerateRetrySemantics:
 
             # retry() raises Retry exception to signal Celery
             from celery.exceptions import Retry
+
             mock_self.retry = MagicMock(side_effect=Retry("Retrying", exc=None))
 
             # Should raise Retry exception (signals retry to Celery)
@@ -1463,6 +1481,7 @@ class TestGenerateRetrySemantics:
             mock_self.max_retries = 1
 
             from celery.exceptions import Retry
+
             mock_self.retry = MagicMock(side_effect=Retry("Retrying", exc=None))
 
             # Should raise Retry exception

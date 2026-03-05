@@ -59,6 +59,7 @@ class UserCreate(BaseModel):
 
         return v
 
+
 class UserResponse(BaseModel):
     """Schema for user response."""
 
@@ -76,6 +77,7 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class UserWithTopics(UserResponse):
     """Schema for user with topic details."""
@@ -127,6 +129,7 @@ class TopicWithStats(TopicResponse):
 
     total_items: int = 0
 
+
 # ============================================================================
 # Item Schemas
 # ============================================================================
@@ -148,7 +151,6 @@ class ItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 
 # ============================================================================
@@ -180,6 +182,7 @@ class UserTriggerResponse(BaseModel):
     task_id: Optional[str] = None
     user_id: UUID
     topic_count: int
+    time_window: Optional[str] = None
 
     class Config:
         from_attributes = True

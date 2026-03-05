@@ -1,7 +1,8 @@
 """User management API endpoints."""
 
+from typing import Annotated
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,7 +124,6 @@ async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
         user_id,
     )
 
-
     return user
 
 
@@ -168,7 +168,11 @@ async def update_user(user_id: UUID, user_data: UserCreate, db: AsyncSession = D
 
 
 @router.post("/{user_id}/trigger", response_model=UserTriggerResponse)
-async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_db)):
+async def trigger_user_collection(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    time_window: Annotated[str, Query(pattern="^(4h|12h|24h|1d)$")] = "24h",
+):
     """
     Manually trigger data collection for all topics subscribed by a user.
 
@@ -198,10 +202,12 @@ async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User has no topics",
         )
+    normalized_window = "24h" if time_window == "1d" else time_window
+
     # Trigger Celery task for user-scoped collection
     task = celery_app.send_task(
         "app.workers.tasks.collect_user_topics",
-        args=[str(user_id)],
+        args=[str(user_id), normalized_window],
     )
 
     logger.info(
@@ -215,4 +221,5 @@ async def trigger_user_collection(user_id: UUID, db: AsyncSession = Depends(get_
         task_id=task.id,
         user_id=user_id,
         topic_count=len(user.topics),
+        time_window=normalized_window,
     )

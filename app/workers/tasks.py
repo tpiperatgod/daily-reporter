@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 from datetime import datetime, timedelta, UTC
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +14,7 @@ from app.services.provider.factory import get_provider
 from app.services.llm.client import LLMClient
 from app.services.embedding.factory import get_embedding_provider
 from app.services.notifier.renderer import render_markdown_digest
+from app.core.config import settings
 
 logger = get_logger(__name__)
 
@@ -318,8 +320,15 @@ async def _notify_async(self, digest_id: str):
 # =============================================================================
 
 
+def parse_time_window(time_window: str) -> int:
+    mapping = {"4h": 4, "12h": 12, "24h": 24, "1d": 24}
+    if time_window not in mapping:
+        raise ValueError(f"Invalid time_window: {time_window}")
+    return mapping[time_window]
+
+
 @celery_app.task(bind=True, name="app.workers.tasks.collect_user_topics", max_retries=3)
-def collect_user_topics(self, user_id: str):
+def collect_user_topics(self, user_id: str, time_window: str = "24h"):
     """
     Collect data from Twitter/X for all topics in user.topics.
 
@@ -332,11 +341,14 @@ def collect_user_topics(self, user_id: str):
         3. Aggregate results
         4. Chain to generate_user_digest
     """
-    logger.info(f"Starting user topic collection for user {user_id}")
-    return asyncio.run(_collect_user_topics_async(self, user_id))
+    logger.info(
+        f"Starting user topic collection for user {user_id}",
+        extra={"time_window": time_window},
+    )
+    return asyncio.run(_collect_user_topics_async(self, user_id, time_window))
 
 
-async def _collect_user_topics_async(self, user_id: str):
+async def _collect_user_topics_async(self, user_id: str, time_window: str = "24h"):
     """Async implementation of collect_user_topics task.
 
     Collects data from all topics in user.topics JSONB array.
@@ -376,9 +388,7 @@ async def _collect_user_topics_async(self, user_id: str):
                     "user_id": user_id,
                 }
 
-            topics_result = await session.execute(
-                select(Topic).where(Topic.id.in_(topic_uuids))
-            )
+            topics_result = await session.execute(select(Topic).where(Topic.id.in_(topic_uuids)))
             topics = topics_result.scalars().all()
 
             if not topics:
@@ -392,12 +402,46 @@ async def _collect_user_topics_async(self, user_id: str):
 
             logger.info(f"Collecting data for user {user_id} with {len(topics)} topics")
 
+            try:
+                hours = parse_time_window(time_window)
+            except ValueError as e:
+                logger.error(str(e))
+                return {
+                    "status": "error",
+                    "message": str(e),
+                    "user_id": user_id,
+                    "time_window": time_window,
+                }
+
+            try:
+                config_tz = ZoneInfo(settings.CRON_TIMEZONE)
+            except ZoneInfoNotFoundError:
+                logger.error(f"Invalid CRON_TIMEZONE: {settings.CRON_TIMEZONE}")
+                return {
+                    "status": "error",
+                    "message": "Invalid timezone configuration",
+                    "user_id": user_id,
+                    "time_window": time_window,
+                }
+
+            now_tz = datetime.now(config_tz)
+            window_end_utc = now_tz.astimezone(UTC)
+            window_start_utc = (now_tz - timedelta(hours=hours)).astimezone(UTC)
+
+            logger.info(
+                f"Time window (configured tz): {now_tz - timedelta(hours=hours)} to {now_tz}",
+                extra={
+                    "time_window": time_window,
+                    "timezone": settings.CRON_TIMEZONE,
+                    "window_start_utc": window_start_utc.isoformat(),
+                    "window_end_utc": window_end_utc.isoformat(),
+                },
+            )
+
             # Track aggregated results
             total_items_collected = 0
-            all_new_items = []
             topics_processed = 0
-            min_item_created_at = None
-            max_item_created_at = None
+            enabled_topics = []
 
             # Get provider once (shared across topics)
             provider = get_provider()
@@ -407,6 +451,8 @@ async def _collect_user_topics_async(self, user_id: str):
                 if not topic.is_enabled:
                     logger.info(f"Topic {topic.name} is disabled, skipping")
                     continue
+
+                enabled_topics.append(topic)
 
                 logger.info(
                     f"Collecting data for topic: {topic.name}",
@@ -539,14 +585,6 @@ async def _collect_user_topics_async(self, user_id: str):
                     await session.commit()
                     logger.info(f"Inserted {len(new_items)} new items for topic {topic.name}")
 
-                    # Track for aggregated time window
-                    for item in new_items:
-                        if min_item_created_at is None or item.created_at < min_item_created_at:
-                            min_item_created_at = item.created_at
-                        if max_item_created_at is None or item.created_at > max_item_created_at:
-                            max_item_created_at = item.created_at
-
-                    all_new_items.extend(new_items)
                     total_items_collected += len(new_items)
                 else:
                     logger.info(f"No new items after deduplication for topic {topic.name}")
@@ -573,19 +611,52 @@ async def _collect_user_topics_async(self, user_id: str):
                 await llm_client.close()
                 topics_processed += 1
 
-            # 8. Chain to generate_user_digest if we have new items
-            if all_new_items:
-                logger.info("Chaining to generate_user_digest task")
-                # Build context snapshot from resolved topics
-                topic_ids = [str(topic.id) for topic in topics]
-                topic_names = {str(topic.id): topic.name for topic in topics}
-                generate_user_digest.delay(
-                    user_id=user_id,
-                    topic_ids=topic_ids,
-                    topic_names=topic_names,
-                    window_start=min_item_created_at.isoformat(),
-                    window_end=max_item_created_at.isoformat(),
-                )
+            if not enabled_topics:
+                logger.info(f"No enabled topics for user {user_id}")
+                return {
+                    "status": "success",
+                    "message": "No enabled topics",
+                    "user_id": user_id,
+                    "items_collected": total_items_collected,
+                    "topics_processed": topics_processed,
+                    "time_window": time_window,
+                }
+
+            topic_uuids_for_window = [topic.id for topic in enabled_topics]
+            items_result = await session.execute(
+                select(Item)
+                .where(Item.topic_id.in_(topic_uuids_for_window))
+                .where(Item.created_at >= window_start_utc)
+                .where(Item.created_at <= window_end_utc)
+                .order_by(Item.created_at.desc())
+                .limit(1000)
+            )
+            items_in_window = items_result.scalars().all()
+
+            if not items_in_window:
+                logger.info(f"No items found in time window {time_window} for user {user_id}")
+                return {
+                    "status": "success",
+                    "message": "No items in time window",
+                    "user_id": user_id,
+                    "items_collected": total_items_collected,
+                    "topics_processed": topics_processed,
+                    "time_window": time_window,
+                }
+
+            logger.info(
+                f"Chaining to generate_user_digest task with {len(items_in_window)} items in window",
+                extra={"time_window": time_window},
+            )
+            topic_ids = [str(topic.id) for topic in enabled_topics]
+            topic_names = {str(topic.id): topic.name for topic in enabled_topics}
+            generate_user_digest.delay(
+                user_id=user_id,
+                topic_ids=topic_ids,
+                topic_names=topic_names,
+                window_start=window_start_utc.isoformat(),
+                window_end=window_end_utc.isoformat(),
+            )
 
             return {
                 "status": "success",
@@ -593,6 +664,7 @@ async def _collect_user_topics_async(self, user_id: str):
                 "user_id": user_id,
                 "items_collected": total_items_collected,
                 "topics_processed": topics_processed,
+                "time_window": time_window,
             }
 
     except Exception as e:
@@ -602,6 +674,7 @@ async def _collect_user_topics_async(self, user_id: str):
             "message": str(e),
             "user_id": user_id,
         }
+
 
 @celery_app.task(bind=True, name="app.workers.tasks.generate_user_digest", max_retries=1)
 def generate_user_digest(
@@ -800,10 +873,10 @@ async def _generate_user_digest_async(
         # Robustness: Handle cases where self.request or self.max_retries might not be available
         try:
             can_retry = (
-                hasattr(self, 'request') and
-                hasattr(self.request, 'retries') and
-                hasattr(self, 'max_retries') and
-                self.request.retries < self.max_retries
+                hasattr(self, "request")
+                and hasattr(self.request, "retries")
+                and hasattr(self, "max_retries")
+                and self.request.retries < self.max_retries
             )
         except (AttributeError, TypeError):
             # In tests or unusual contexts, default to no retry
@@ -815,6 +888,7 @@ async def _generate_user_digest_async(
             raise self.retry(exc=e, countdown=countdown)
 
         return {"status": "error", "message": str(e), "user_id": user_id}
+
 
 @celery_app.task(bind=True, name="app.workers.tasks.notify_user_digest", max_retries=2)
 def notify_user_digest(self, user_digest_id: str):
