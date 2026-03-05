@@ -195,17 +195,21 @@ class APIClient:
             data = self._handle_response(response)
             return TriggerResponse(**data)
 
-    def trigger_user(self, user_id: UUID) -> UserTriggerResponse:
+    def trigger_user(self, user_id: UUID, time_window: str = "24h") -> UserTriggerResponse:
         """Trigger data collection for all topics subscribed by a user.
 
         Args:
             user_id: UUID of the user
+            time_window: Time window for collection (4h, 12h, 24h, or 1d)
 
         Returns:
             UserTriggerResponse with task ID and topic count
         """
         with self._get_client() as client:
-            response = client.post(f"{self.base_url}/api/v1/users/{user_id}/trigger")
+            response = client.post(
+                f"{self.base_url}/api/v1/users/{user_id}/trigger",
+                params={"time_window": time_window}
+            )
             data = self._handle_response(response)
             return UserTriggerResponse(**data)
 
