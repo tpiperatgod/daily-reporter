@@ -13,7 +13,6 @@ from xndctl.schemas import (
     TopicUpdate,
     TopicResponse,
     TopicWithStats,
-    TriggerResponse,
     UserTriggerResponse,
     PaginatedResponse,
 )
@@ -181,13 +180,6 @@ class APIClient:
             if topic.name.lower() == name.lower():
                 return topic
         return None
-
-    def trigger_topic(self, topic_id: UUID) -> TriggerResponse:
-        """Manually trigger topic collection."""
-        with self._get_client() as client:
-            response = client.post(f"{self.base_url}/api/v1/topics/{topic_id}/trigger")
-            data = self._handle_response(response)
-            return TriggerResponse(**data)
 
     def trigger_user(self, user_id: UUID, time_window: str = "24h") -> UserTriggerResponse:
         """Trigger data collection for all topics subscribed by a user.

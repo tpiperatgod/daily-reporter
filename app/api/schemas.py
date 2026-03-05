@@ -154,22 +154,6 @@ class ItemResponse(BaseModel):
 
 
 # ============================================================================
-# Trigger Response Schemas
-# ============================================================================
-
-
-class TriggerResponse(BaseModel):
-    """Schema for manual trigger response."""
-
-    status: str
-    message: str
-    task_id: Optional[str] = None
-    topic_id: Optional[str] = None
-    deprecated: Optional[bool] = None
-    deprecation_message: Optional[str] = None
-
-
-# ============================================================================
 # User-Scoped Trigger Response Schemas
 # ============================================================================
 

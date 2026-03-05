@@ -38,23 +38,6 @@ X-News-Digest is an automated Twitter/X news digest system that collects tweets 
 
 ### Data Pipeline Flow
 
-#### Topic-Scoped Pipeline (Deprecated)
-```
-Topic (cron schedule) → Celery Beat → collect_data task
-  ↓
-TwitterAPIAdapter.fetch_items(since_id=last_tweet_id)
-  ↓
-Embedding generation + deduplication (by source_id and semantic similarity)
-  ↓
-Store Items in PostgreSQL (update topic.last_tweet_id)
-  ↓
-generate_digest task (LLM summarization)
-  ↓
-[DECOMMISSIONED] notify task no longer chains
-```
-
-**Note**: Topic-scoped notification pipeline has been decommissioned. Use user-scoped pipeline for notifications.
-
 #### User-Scoped Pipeline (Active)
 ```
 User (cron schedule) → Celery Beat → collect_user_topics task
@@ -71,9 +54,7 @@ notify_user_digest task → Feishu/Email delivery
 
 **Key Features**:
 - User-scoped pipeline generates a single aggregated digest from all topics in `user.topics`
-- Topic-scoped pipeline generates separate digests per topic but no longer sends notifications
 - User-scoped is triggered via `POST /users/{user_id}/trigger`
-- Topic-scoped is triggered via `POST /topics/{topic_id}/trigger` (deprecated for notifications)
 - Notification channels determined by user-level flags: `enable_feishu`, `enable_email`
 
 ### Key Database Models (`app/db/models.py`)
@@ -328,19 +309,19 @@ The project uses GitHub Actions for CI (`.github/workflows/ci.yml`):
 The `last_tweet_id` field on Topics enables incremental data collection:
 
 ```python
-# In tasks.py:collect_data
+# In tasks.py:_collect_user_topics_async
 fetch_kwargs = {
     "query": topic.query,
     "start_date": start_date,
     "end_date": end_date,
-    "max_items": 100
+    "max_items": 100,
 }
 
 # Add since_id if available
-if topic.last_tweet_id and hasattr(provider, 'fetch_items'):
-    sig = inspect.signature(provider.fetch_items)
-    if 'since_id' in sig.parameters:
-        fetch_kwargs['since_id'] = topic.last_tweet_id
+if topic.last_tweet_id:
+    sig = inspect.signature(provider.fetch)
+    if "since_id" in sig.parameters:
+        fetch_kwargs["since_id"] = topic.last_tweet_id
 ```
 
 After successful collection, update `topic.last_tweet_id` with the highest tweet ID returned.

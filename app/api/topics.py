@@ -2,7 +2,7 @@
 
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,11 +14,9 @@ from app.api.schemas import (
     TopicResponse,
     TopicWithStats,
     PaginatedResponse,
-    TriggerResponse,
 )
 from app.core.logging import get_logger
 from app.db.utils import get_entity_or_404, paginate_query
-from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
 
@@ -179,47 +177,3 @@ async def delete_topic(topic_id: UUID, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     logger.info(f"Topic deleted: {topic_id}")
-
-
-@router.post("/{topic_id}/trigger", response_model=TriggerResponse)
-async def trigger_topic_collection(topic_id: UUID, db: AsyncSession = Depends(get_db)):
-    """
-    Manually trigger data collection for a topic.
-
-    **DEPRECATED**: This endpoint is deprecated. Use POST /users/{user_id}/trigger
-    for user-scoped aggregation instead.
-
-    Args:
-        topic_id: Topic UUID
-        db: Database session
-
-    Returns:
-        Trigger response with task ID and deprecation warning
-
-    Raises:
-        HTTPException: If topic not found or not enabled
-    """
-    topic = await get_entity_or_404(db, Topic, topic_id)
-
-    if not topic.is_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Topic is disabled. Enable it first.",
-        )
-
-    # Trigger Celery task
-    task = celery_app.send_task("app.workers.tasks.collect_data", args=[str(topic_id)])
-
-    logger.info(
-        f"Manually triggered collection for topic {topic_id}",
-        extra={"task_id": task.id},
-    )
-
-    return TriggerResponse(
-        status="success",
-        message="Data collection task triggered",
-        task_id=task.id,
-        topic_id=str(topic_id),
-        deprecated=True,
-        deprecation_message="Use POST /users/{user_id}/trigger for user-scoped aggregation",
-    )

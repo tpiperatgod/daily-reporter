@@ -10,8 +10,10 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 # User Schemas
 # ============================================================================
 
+
 class UserCreate(BaseModel):
     """Schema for creating a user."""
+
     name: Optional[str] = Field(None, max_length=255)
     email: EmailStr
     feishu_webhook_url: Optional[str] = Field(None, max_length=2048)
@@ -54,8 +56,10 @@ class UserCreate(BaseModel):
 
         return v
 
+
 class UserUpdate(BaseModel):
     """Schema for updating a user."""
+
     name: Optional[str] = Field(None, max_length=255)
     email: Optional[EmailStr] = None
     feishu_webhook_url: Optional[str] = Field(None, max_length=2048)
@@ -64,6 +68,7 @@ class UserUpdate(BaseModel):
 
 class UserResponse(BaseModel):
     """Schema for user response."""
+
     id: UUID
     name: Optional[str]
     email: str
@@ -81,6 +86,7 @@ class UserResponse(BaseModel):
 
 class UserWithTopics(UserResponse):
     """Schema for user with topic details."""
+
     # Inherits all fields from UserResponse including topics
 
     model_config = {"from_attributes": True}
@@ -90,14 +96,17 @@ class UserWithTopics(UserResponse):
 # Topic Schemas
 # ============================================================================
 
+
 class TopicCreate(BaseModel):
     """Schema for creating a topic."""
+
     name: str = Field(..., max_length=255)
     query: str = Field(..., min_length=1)
 
 
 class TopicUpdate(BaseModel):
     """Schema for updating a topic."""
+
     name: Optional[str] = Field(None, max_length=255)
     query: Optional[str] = Field(None, min_length=1)
     is_enabled: Optional[bool] = None
@@ -105,6 +114,7 @@ class TopicUpdate(BaseModel):
 
 class TopicResponse(BaseModel):
     """Schema for topic response."""
+
     id: UUID
     name: str
     query: str
@@ -118,40 +128,30 @@ class TopicResponse(BaseModel):
 
 class TopicWithStats(TopicResponse):
     """Schema for topic with statistics."""
+
     total_items: int = 0
-    # total_digests removed - topic-scoped digests decommissioned
-
-
-# ============================================================================
-# Trigger Response Schemas
-# ============================================================================
-
-class TriggerResponse(BaseModel):
-    """Schema for manual trigger response."""
-    status: str
-    message: str
-    task_id: Optional[str] = None
-    topic_id: Optional[str] = None
 
 
 class UserTriggerResponse(BaseModel):
     """Response from user trigger endpoint."""
+
     status: str
     message: str
     task_id: Optional[str] = None
     user_id: UUID
     topic_count: int
 
+
 # ============================================================================
 # List Response Wrapper
 # ============================================================================
 
+
 class PaginatedResponse(BaseModel):
     """Schema for paginated list response."""
+
     items: List
     total: int
     limit: int
     offset: int
     has_more: bool
-
-
