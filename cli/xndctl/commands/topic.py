@@ -11,7 +11,7 @@ from xndctl.utils import (
     confirm_action,
     display_success,
     display_warning,
-    console
+    console,
 )
 from xndctl.prompts.topic import prompt_topic_create, prompt_topic_update
 from xndctl.client import NotFoundError
@@ -28,12 +28,7 @@ def topic():
 @click.option("--query", help="Search query (required)")
 @click.option("-p", "--prompt", is_flag=True, help="Interactive mode")
 @pass_context
-def create(
-    ctx: Context,
-    name: str,
-    query: str,
-    prompt: bool
-):
+def create(ctx: Context, name: str, query: str, prompt: bool):
     """Create a new topic."""
     try:
         if prompt:
@@ -49,11 +44,7 @@ def create(
                 click.echo("Use -p for interactive mode")
                 return
 
-            topic_data = TopicCreate(
-                name=name,
-                query=query
-            )
-
+            topic_data = TopicCreate(name=name, query=query)
 
         # Create topic
         result = ctx.client.create_topic(topic_data)
@@ -78,7 +69,7 @@ def list_topics(ctx: Context, limit: int, offset: int):
         result = ctx.client.list_topics(limit=limit, offset=offset)
 
         # Prepare display columns
-        columns = ["id", "name", "query", "is_enabled", "last_collection_timestamp"]
+        columns = ["id", "name", "query", "is_enabled"]
 
         display_paginated_results(
             items=result.items,
@@ -88,7 +79,7 @@ def list_topics(ctx: Context, limit: int, offset: int):
             has_more=result.has_more,
             format=ctx.output_format,
             columns=columns,
-            title="Topics"
+            title="Topics",
         )
 
     except Exception as e:
@@ -134,15 +125,7 @@ def get_topic(ctx: Context, topic_id: str, name: str):
 @click.option("--enable/--disable", default=None, help="Enable or disable topic")
 @click.option("-p", "--prompt", is_flag=True, help="Interactive mode")
 @pass_context
-def update(
-    ctx: Context,
-    topic_id: str,
-    lookup_name: str,
-    new_name: str,
-    query: str,
-    enable: bool,
-    prompt: bool
-):
+def update(ctx: Context, topic_id: str, lookup_name: str, new_name: str, query: str, enable: bool, prompt: bool):
     """Update a topic."""
     try:
         # Find topic
@@ -158,28 +141,19 @@ def update(
 
         if prompt:
             # Interactive mode
-            update_data, confirmed = prompt_topic_update(
-                topic.name,
-                topic.query,
-                topic.is_enabled
-            )
+            update_data, confirmed = prompt_topic_update(topic.name, topic.query, topic.is_enabled)
             if not confirmed:
                 display_warning("Update cancelled")
                 return
         else:
             # Flag-based mode
-            update_data = TopicUpdate(
-                name=new_name,
-                query=query,
-                is_enabled=enable
-            )
+            update_data = TopicUpdate(name=new_name, query=query, is_enabled=enable)
 
             # Check if anything to update
             if not any([new_name, query, enable is not None]):
                 console.print("[yellow]No updates specified[/yellow]")
                 click.echo("Use -p for interactive mode")
                 return
-
 
         # Update topic
         result = ctx.client.update_topic(topic.id, update_data)

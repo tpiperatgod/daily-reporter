@@ -163,23 +163,9 @@ async def _collect_user_topics_async(self, user_id: str, time_window: str = "24h
                     extra={"topic_id": str(topic.id), "query": topic.query},
                 )
 
-                # Calculate time window for this topic
-                end_date = datetime.now(UTC)
-                if topic.last_collection_timestamp:
-                    start_date = topic.last_collection_timestamp
-                else:
-                    start_date = end_date - timedelta(hours=24)
-
-                logger.info(
-                    f"Time window: {start_date} to {end_date}",
-                    extra={"start": start_date.isoformat(), "end": end_date.isoformat()},
-                )
-
                 # Fetch items from provider
                 fetch_kwargs = {
                     "query": topic.query,
-                    "start_date": start_date,
-                    "end_date": end_date,
                     "max_items": 100,
                 }
 
@@ -200,8 +186,6 @@ async def _collect_user_topics_async(self, user_id: str, time_window: str = "24h
 
                 if not raw_items:
                     logger.info(f"No items fetched for topic {topic.name}")
-                    topic.last_collection_timestamp = end_date
-                    await session.commit()
                     topics_processed += 1
                     continue
 
@@ -292,9 +276,6 @@ async def _collect_user_topics_async(self, user_id: str, time_window: str = "24h
                     total_items_collected += len(new_items)
                 else:
                     logger.info(f"No new items after deduplication for topic {topic.name}")
-
-                # 7. Update last_collection_timestamp and last_tweet_id
-                topic.last_collection_timestamp = end_date
 
                 # Track highest tweet ID
                 if raw_items:

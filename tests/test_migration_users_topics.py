@@ -15,7 +15,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import User, Topic
+from app.db.models import Topic
 from app.db.session import get_async_session_local
 
 
@@ -54,9 +54,8 @@ async def test_topics(async_session):
             id=uuid4(),
             name=f"Migration Test Topic {i} {uuid4()}",
             query=f"@migration_test_{i}_{uuid4()}",
-        # cron_expression removed - topic-scoped scheduling decommissioned
+            # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
-            last_collection_timestamp=None,
             last_tweet_id=None,
         )
         async_session.add(topic)
@@ -115,7 +114,7 @@ class TestMigrationDataIntegrity:
         await session.execute(
             text("""
                 UPDATE users u
-                SET 
+                SET
                     topics = COALESCE(
                         (SELECT jsonb_agg(DISTINCT s.topic_id)
                          FROM subscriptions s
@@ -407,7 +406,7 @@ class TestMigrationEdgeCases:
         await session.execute(
             text("""
                 UPDATE users u
-                SET 
+                SET
                     topics = COALESCE(
                         (SELECT jsonb_agg(DISTINCT s.topic_id)
                          FROM subscriptions s

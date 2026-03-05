@@ -116,7 +116,6 @@ class TopicResponse(BaseModel):
     name: str
     query: str
     is_enabled: bool
-    last_collection_timestamp: Optional[datetime]
     last_tweet_id: Optional[str] = None
     created_at: datetime
 

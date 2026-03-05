@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timedelta
 import random
 from app.services.provider.base import RawItem
@@ -208,14 +208,20 @@ class MockAdapter:
         """Initialize the mock adapter."""
         self.tweet_counter = 1000  # Start tweet IDs from 1000
 
-    async def fetch(self, query: str, start_date: datetime, end_date: datetime, max_items: int = 100) -> List[RawItem]:
+    async def fetch(
+        self,
+        query: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        max_items: int = 100,
+    ) -> List[RawItem]:
         """
         Fetch mock tweets based on the query.
 
         Args:
             query: Search query (used to select topic)
-            start_date: Start of time window
-            end_date: End of time window
+            start_date: Optional start of time window
+            end_date: Optional end of time window
             max_items: Maximum items to return
 
         Returns:
@@ -224,6 +230,11 @@ class MockAdapter:
         # Select appropriate mock data based on query
         query_lower = query.lower()
         mock_data = []
+
+        if end_date is None:
+            end_date = datetime.now()
+        if start_date is None:
+            start_date = end_date - timedelta(hours=24)
 
         if "ai" in query_lower or "machine learning" in query_lower or "gpt" in query_lower:
             mock_data = self.MOCK_TWEETS.get("AI", self.MOCK_TWEETS["default"])

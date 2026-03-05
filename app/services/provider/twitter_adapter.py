@@ -42,8 +42,8 @@ class TwitterAPIAdapter(BaseProvider):
     async def fetch(
         self,
         query: str,
-        start_date: datetime,
-        end_date: datetime,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
         max_items: int = 100,
         since_id: Optional[str] = None,
     ) -> List[RawItem]:

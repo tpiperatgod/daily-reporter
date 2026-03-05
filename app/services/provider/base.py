@@ -1,4 +1,4 @@
-from typing import Protocol, List
+from typing import Protocol, List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -30,14 +30,20 @@ class BaseProvider(Protocol):
     from external sources (Twitter/X, Mock, etc.).
     """
 
-    async def fetch(self, query: str, start_date: datetime, end_date: datetime, max_items: int = 100) -> List[RawItem]:
+    async def fetch(
+        self,
+        query: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        max_items: int = 100,
+    ) -> List[RawItem]:
         """
         Fetch items from external source matching the query.
 
         Args:
             query: Search query string
-            start_date: Start of time window
-            end_date: End of time window
+            start_date: Optional start of time window
+            end_date: Optional end of time window
             max_items: Maximum number of items to return
 
         Returns:

@@ -47,7 +47,6 @@ class Topic(Base):
     name = Column(String(255), nullable=False)
     query = Column(Text, nullable=False)
     is_enabled = Column(Boolean, default=True, nullable=False)
-    last_collection_timestamp = Column(DateTime(timezone=True), nullable=True)
     last_tweet_id = Column(String(255), nullable=True, index=True)
     last_item_created_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -55,12 +54,8 @@ class Topic(Base):
     # Relationships
     items = relationship("Item", back_populates="topic", cascade="all, delete-orphan")
 
-    # Index for scheduling queries
-    __table_args__ = (Index("ix_topics_enabled_last_run", "is_enabled", "last_collection_timestamp"),)
-
     def __repr__(self):
         return f"<Topic {self.name}>"
-
 
 
 class Item(Base):
@@ -139,9 +134,8 @@ class Delivery(Base):
     user = relationship("User", back_populates="deliveries")
 
     # Index for efficient queries
-    __table_args__ = (
-        Index("ix_deliveries_user_digest_status", "user_digest_id", "status"),
-    )
+    __table_args__ = (Index("ix_deliveries_user_digest_status", "user_digest_id", "status"),)
 
     def __repr__(self):
         digest_ref = f"user_digest={self.user_digest_id}" if self.user_digest_id else "no_digest"
+        return f"<Delivery {self.channel} {self.status} {digest_ref}>"

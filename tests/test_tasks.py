@@ -152,7 +152,6 @@ class TestCollectUserTopics:
             query="@test",
             # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
-            last_collection_timestamp=None,
             last_tweet_id=None,
         )
         # User with topic in topics array
@@ -224,7 +223,6 @@ class TestCollectUserTopics:
             query="@test",
             # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
-            last_collection_timestamp=None,
             last_tweet_id=None,
         )
         # User with topic in topics array
@@ -272,7 +270,6 @@ class TestCollectUserTopics:
             query="@test",
             # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
-            last_collection_timestamp=datetime.now(UTC) - timedelta(hours=1),
             last_tweet_id="999",
         )
         # User with topic in topics array

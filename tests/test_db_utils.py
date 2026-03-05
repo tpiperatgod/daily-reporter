@@ -31,7 +31,6 @@ async def test_topics(async_session):
             query=f"@test{i}",
             # cron_expression removed - topic-scoped scheduling decommissioned
             is_enabled=True,
-            last_collection_timestamp=None,
             last_tweet_id=None,
         )
         async_session.add(topic)
