@@ -8,7 +8,6 @@ from xndctl.utils import handle_error, display_success, display_warning, display
 from xndctl.schemas import UserWithTopics
 
 
-
 def prompt_time_window() -> str:
     """Prompt user to select time window for data collection."""
     click.echo()
@@ -53,10 +52,11 @@ def prompt_select_user(users: List[UserWithTopics]) -> Optional[UUID]:
 @click.command(name="trigger")
 @click.option("-p", "--prompt", is_flag=True, required=True, help="Interactive mode (required)")
 @click.option(
-    "-t", "--time-window",
+    "-t",
+    "--time-window",
     type=click.Choice(["4h", "12h", "24h", "1d"], case_sensitive=True),
     default=None,
-    help="Time window for data collection (default: 24h)"
+    help="Time window for data collection (default: 24h)",
 )
 @pass_context
 def trigger(ctx: Context, prompt: bool, time_window: Optional[str]):

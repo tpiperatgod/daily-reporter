@@ -5,26 +5,35 @@ from uuid import UUID
 import httpx
 from xndctl.config import Config
 from xndctl.schemas import (
-    UserCreate, UserUpdate, UserResponse, UserWithTopics,
-    TopicCreate, TopicUpdate, TopicResponse, TopicWithStats,
-    TriggerResponse, UserTriggerResponse,
+    UserCreate,
+    UserUpdate,
+    UserResponse,
+    UserWithTopics,
+    TopicCreate,
+    TopicUpdate,
+    TopicResponse,
+    TopicWithStats,
+    TriggerResponse,
+    UserTriggerResponse,
     PaginatedResponse,
 )
 
 
-
 class APIError(Exception):
     """Base exception for API errors."""
+
     pass
 
 
 class NotFoundError(APIError):
     """Resource not found error."""
+
     pass
 
 
 class ValidationError(APIError):
     """Request validation error."""
+
     pass
 
 
@@ -40,10 +49,7 @@ class APIClient:
 
     def _get_client(self) -> httpx.Client:
         """Get HTTP client instance."""
-        return httpx.Client(
-            timeout=self.timeout,
-            verify=self.verify_ssl
-        )
+        return httpx.Client(timeout=self.timeout, verify=self.verify_ssl)
 
     def _handle_response(self, response: httpx.Response) -> Dict[str, Any]:
         """Handle HTTP response and errors."""
@@ -79,36 +85,29 @@ class APIClient:
     def create_user(self, user: UserCreate) -> UserResponse:
         """Create a new user."""
         with self._get_client() as client:
-            response = client.post(
-                f"{self.base_url}/api/v1/users",
-                json=user.model_dump(exclude_none=True)
-            )
+            response = client.post(f"{self.base_url}/api/v1/users", json=user.model_dump(exclude_none=True))
             data = self._handle_response(response)
             return UserResponse(**data)
 
     def list_users(self, limit: int = 100, offset: int = 0) -> PaginatedResponse:
         """List users with pagination."""
         with self._get_client() as client:
-            response = client.get(
-                f"{self.base_url}/api/v1/users",
-                params={"limit": limit, "offset": offset}
-            )
+            response = client.get(f"{self.base_url}/api/v1/users", params={"limit": limit, "offset": offset})
             data = self._handle_response(response)
             data["items"] = [UserWithTopics(**item) for item in data["items"]]
             return PaginatedResponse(**data)
+
     def get_user(self, user_id: UUID) -> UserWithTopics:
         """Get user by ID."""
         with self._get_client() as client:
             response = client.get(f"{self.base_url}/api/v1/users/{user_id}")
             data = self._handle_response(response)
             return UserWithTopics(**data)
+
     def update_user(self, user_id: UUID, user: UserUpdate) -> UserResponse:
         """Update user."""
         with self._get_client() as client:
-            response = client.patch(
-                f"{self.base_url}/api/v1/users/{user_id}",
-                json=user.model_dump(exclude_none=True)
-            )
+            response = client.patch(f"{self.base_url}/api/v1/users/{user_id}", json=user.model_dump(exclude_none=True))
             data = self._handle_response(response)
             return UserResponse(**data)
 
@@ -125,6 +124,7 @@ class APIClient:
             if user.name and user.name.lower() == name.lower():
                 return user
         return None
+
     def find_user_by_email(self, email: str) -> Optional[UserWithTopics]:
         """Find user by email (returns first match)."""
         users = self.list_users(limit=1000)  # Get all users
@@ -132,6 +132,7 @@ class APIClient:
             if user.email.lower() == email.lower():
                 return user
         return None
+
     # ========================================================================
     # Topic Operations
     # ========================================================================
@@ -139,20 +140,14 @@ class APIClient:
     def create_topic(self, topic: TopicCreate) -> TopicResponse:
         """Create a new topic."""
         with self._get_client() as client:
-            response = client.post(
-                f"{self.base_url}/api/v1/topics",
-                json=topic.model_dump()
-            )
+            response = client.post(f"{self.base_url}/api/v1/topics", json=topic.model_dump())
             data = self._handle_response(response)
             return TopicResponse(**data)
 
     def list_topics(self, limit: int = 100, offset: int = 0) -> PaginatedResponse:
         """List topics with pagination."""
         with self._get_client() as client:
-            response = client.get(
-                f"{self.base_url}/api/v1/topics",
-                params={"limit": limit, "offset": offset}
-            )
+            response = client.get(f"{self.base_url}/api/v1/topics", params={"limit": limit, "offset": offset})
             data = self._handle_response(response)
             data["items"] = [TopicWithStats(**item) for item in data["items"]]
             return PaginatedResponse(**data)
@@ -168,8 +163,7 @@ class APIClient:
         """Update topic."""
         with self._get_client() as client:
             response = client.patch(
-                f"{self.base_url}/api/v1/topics/{topic_id}",
-                json=topic.model_dump(exclude_none=True)
+                f"{self.base_url}/api/v1/topics/{topic_id}", json=topic.model_dump(exclude_none=True)
             )
             data = self._handle_response(response)
             return TopicResponse(**data)
@@ -207,9 +201,7 @@ class APIClient:
         """
         with self._get_client() as client:
             response = client.post(
-                f"{self.base_url}/api/v1/users/{user_id}/trigger",
-                params={"time_window": time_window}
+                f"{self.base_url}/api/v1/users/{user_id}/trigger", params={"time_window": time_window}
             )
             data = self._handle_response(response)
             return UserTriggerResponse(**data)
-
