@@ -21,8 +21,10 @@ from app.db.session import get_async_session_local
 
 @pytest_asyncio.fixture
 async def async_session():
-    AsyncSessionLocal = get_async_session_local()
-    async with AsyncSessionLocal() as session:
+    session_factory = get_async_session_local()
+    if session_factory is None:
+        raise RuntimeError("async session factory is not configured")
+    async with session_factory() as session:
         await session.execute(
             text("""
             CREATE TABLE IF NOT EXISTS subscriptions (
@@ -68,89 +70,108 @@ async def test_topics(async_session):
     return topics
 
 
+USER_INSERT_SQL = text(
+    """
+        INSERT INTO users (id, name, email, topics, enable_feishu, enable_email)
+        VALUES (:id, :name, :email, '[]'::jsonb, true, true)
+    """
+)
+
+SUBSCRIPTION_INSERT_SQL = text(
+    """
+        INSERT INTO subscriptions (id, user_id, topic_id, enable_feishu, enable_email)
+        VALUES (:id, :user_id, :topic_id, :feishu, :email)
+    """
+)
+
+MIGRATION_UPDATE_SQL = text(
+    """
+        UPDATE users u
+        SET
+            topics = COALESCE(
+                (SELECT jsonb_agg(DISTINCT s.topic_id)
+                    FROM subscriptions s
+                    WHERE s.user_id = u.id),
+                '[]'::jsonb
+            ),
+            enable_feishu = COALESCE(
+                (SELECT bool_or(s.enable_feishu)
+                    FROM subscriptions s
+                    WHERE s.user_id = u.id),
+                true
+            ),
+            enable_email = COALESCE(
+                (SELECT bool_or(s.enable_email)
+                    FROM subscriptions s
+                    WHERE s.user_id = u.id),
+                true
+            )
+    """
+)
+
+
+async def _insert_user(session: AsyncSession, *, email_prefix: str, name: str) -> str:
+    user_id = uuid4()
+    unique_email = f"{email_prefix}.{uuid4()}@test.local"
+    await session.execute(
+        USER_INSERT_SQL,
+        {"id": user_id, "name": name, "email": unique_email},
+    )
+    return str(user_id)
+
+
+async def _create_user_with_subscriptions(
+    session: AsyncSession,
+    *,
+    email_prefix: str,
+    topic_ids: list[str],
+    feishu_flags: list[bool],
+    email_flags: list[bool],
+) -> str:
+    user_id = await _insert_user(
+        session,
+        email_prefix=email_prefix,
+        name=f"Test User {email_prefix}",
+    )
+
+    for topic_id, feishu, email_flag in zip(topic_ids, feishu_flags, email_flags):
+        await session.execute(
+            SUBSCRIPTION_INSERT_SQL,
+            {
+                "id": uuid4(),
+                "user_id": user_id,
+                "topic_id": topic_id,
+                "feishu": feishu,
+                "email": email_flag,
+            },
+        )
+
+    await session.commit()
+    return user_id
+
+
+async def _run_migration_update(session: AsyncSession) -> None:
+    await session.execute(MIGRATION_UPDATE_SQL)
+    await session.commit()
+
+
 class TestMigrationDataIntegrity:
     """Test data migration correctness."""
-
-    async def _create_user_with_subscriptions(
-        self,
-        session: AsyncSession,
-        email: str,
-        topic_ids: list,
-        feishu_flags: list,
-        email_flags: list,
-    ):
-        """Helper to create user with subscriptions via raw SQL."""
-        user_id = uuid4()
-        unique_email = f"{email}.{uuid4()}@test.local"
-
-        await session.execute(
-            text("""
-                INSERT INTO users (id, name, email, schedule, topics, enable_feishu, enable_email)
-                VALUES (:id, :name, :email, '0 9 * * *', '[]'::jsonb, true, true)
-            """),
-            {"id": user_id, "name": f"Test User {email}", "email": unique_email},
-        )
-
-        for i, (topic_id, feishu, email_flag) in enumerate(zip(topic_ids, feishu_flags, email_flags)):
-            await session.execute(
-                text("""
-                    INSERT INTO subscriptions (id, user_id, topic_id, enable_feishu, enable_email)
-                    VALUES (:id, :user_id, :topic_id, :feishu, :email)
-                """),
-                {
-                    "id": uuid4(),
-                    "user_id": user_id,
-                    "topic_id": topic_id,
-                    "feishu": feishu,
-                    "email": email_flag,
-                },
-            )
-
-        await session.commit()
-        return user_id
-
-    async def _run_migration_update(self, session: AsyncSession):
-        """Run the data migration UPDATE statement."""
-        await session.execute(
-            text("""
-                UPDATE users u
-                SET
-                    topics = COALESCE(
-                        (SELECT jsonb_agg(DISTINCT s.topic_id)
-                         FROM subscriptions s
-                         WHERE s.user_id = u.id),
-                        '[]'::jsonb
-                    ),
-                    enable_feishu = COALESCE(
-                        (SELECT bool_or(s.enable_feishu)
-                         FROM subscriptions s
-                         WHERE s.user_id = u.id),
-                        true
-                    ),
-                    enable_email = COALESCE(
-                        (SELECT bool_or(s.enable_email)
-                         FROM subscriptions s
-                         WHERE s.user_id = u.id),
-                        true
-                    )
-            """)
-        )
-        await session.commit()
 
     @pytest.mark.asyncio
     async def test_user_with_multiple_subscriptions(self, async_session, test_topics):
         """Test user with multiple subscriptions gets correct topics array."""
         topic_ids = [str(t.id) for t in test_topics[:3]]
 
-        user_id = await self._create_user_with_subscriptions(
+        user_id = await _create_user_with_subscriptions(
             session=async_session,
-            email="multi_sub",
+            email_prefix="multi_sub",
             topic_ids=topic_ids,
             feishu_flags=[True, True, True],
             email_flags=[True, True, True],
         )
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT topics, enable_feishu, enable_email FROM users WHERE id = :id"),
@@ -178,8 +199,8 @@ class TestMigrationDataIntegrity:
 
         await async_session.execute(
             text("""
-                INSERT INTO users (id, name, email, schedule, topics, enable_feishu, enable_email)
-                VALUES (:id, :name, :email, '0 9 * * *', '[]'::jsonb, true, true)
+                INSERT INTO users (id, name, email, topics, enable_feishu, enable_email)
+                VALUES (:id, :name, :email, '[]'::jsonb, true, true)
             """),
             {
                 "id": user_id,
@@ -189,7 +210,7 @@ class TestMigrationDataIntegrity:
         )
         await async_session.commit()
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT topics, enable_feishu, enable_email FROM users WHERE id = :id"),
@@ -215,8 +236,8 @@ class TestMigrationDataIntegrity:
         user_id = uuid4()
         await async_session.execute(
             text("""
-                INSERT INTO users (id, name, email, schedule, topics, enable_feishu, enable_email)
-                VALUES (:id, :name, :email, '0 9 * * *', '[]'::jsonb, true, true)
+                INSERT INTO users (id, name, email, topics, enable_feishu, enable_email)
+                VALUES (:id, :name, :email, '[]'::jsonb, true, true)
             """),
             {
                 "id": user_id,
@@ -239,7 +260,7 @@ class TestMigrationDataIntegrity:
             )
         await async_session.commit()
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT topics FROM users WHERE id = :id"),
@@ -258,15 +279,15 @@ class TestMigrationDataIntegrity:
         """Test enable_feishu uses OR aggregation (any True = True)."""
         topic_ids = [str(t.id) for t in test_topics[:3]]
 
-        user_id = await self._create_user_with_subscriptions(
+        user_id = await _create_user_with_subscriptions(
             session=async_session,
-            email="feishu_or",
+            email_prefix="feishu_or",
             topic_ids=topic_ids,
             feishu_flags=[False, False, True],
             email_flags=[True, True, True],
         )
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT enable_feishu FROM users WHERE id = :id"),
@@ -282,15 +303,15 @@ class TestMigrationDataIntegrity:
         """Test enable_email uses OR aggregation (any True = True)."""
         topic_ids = [str(t.id) for t in test_topics[:3]]
 
-        user_id = await self._create_user_with_subscriptions(
+        user_id = await _create_user_with_subscriptions(
             session=async_session,
-            email="email_or",
+            email_prefix="email_or",
             topic_ids=topic_ids,
             feishu_flags=[True, True, True],
             email_flags=[True, False, False],
         )
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT enable_email FROM users WHERE id = :id"),
@@ -306,15 +327,15 @@ class TestMigrationDataIntegrity:
         """Test flag aggregation when all subscriptions have False flags."""
         topic_ids = [str(t.id) for t in test_topics[:2]]
 
-        user_id = await self._create_user_with_subscriptions(
+        user_id = await _create_user_with_subscriptions(
             session=async_session,
-            email="all_false",
+            email_prefix="all_false",
             topic_ids=topic_ids,
             feishu_flags=[False, False],
             email_flags=[False, False],
         )
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT enable_feishu, enable_email FROM users WHERE id = :id"),
@@ -331,15 +352,15 @@ class TestMigrationDataIntegrity:
         """Test various combinations of channel flags across subscriptions."""
         topic_ids = [str(t.id) for t in test_topics[:4]]
 
-        user_id = await self._create_user_with_subscriptions(
+        user_id = await _create_user_with_subscriptions(
             session=async_session,
-            email="mixed_flags",
+            email_prefix="mixed_flags",
             topic_ids=topic_ids,
             feishu_flags=[True, False, True, False],
             email_flags=[False, False, False, True],
         )
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT topics, enable_feishu, enable_email FROM users WHERE id = :id"),
@@ -363,86 +384,20 @@ class TestMigrationDataIntegrity:
 class TestMigrationEdgeCases:
     """Test edge cases in migration logic."""
 
-    async def _create_user_with_subscriptions(
-        self,
-        session: AsyncSession,
-        email: str,
-        topic_ids: list,
-        feishu_flags: list,
-        email_flags: list,
-    ):
-        """Helper to create user with subscriptions via raw SQL."""
-        user_id = uuid4()
-        unique_email = f"{email}.{uuid4()}@test.local"
-
-        await session.execute(
-            text("""
-                INSERT INTO users (id, name, email, schedule, topics, enable_feishu, enable_email)
-                VALUES (:id, :name, :email, '0 9 * * *', '[]'::jsonb, true, true)
-            """),
-            {"id": user_id, "name": f"Test User {email}", "email": unique_email},
-        )
-
-        for i, (topic_id, feishu, email_flag) in enumerate(zip(topic_ids, feishu_flags, email_flags)):
-            await session.execute(
-                text("""
-                    INSERT INTO subscriptions (id, user_id, topic_id, enable_feishu, enable_email)
-                    VALUES (:id, :user_id, :topic_id, :feishu, :email)
-                """),
-                {
-                    "id": uuid4(),
-                    "user_id": user_id,
-                    "topic_id": topic_id,
-                    "feishu": feishu,
-                    "email": email_flag,
-                },
-            )
-
-        await session.commit()
-        return user_id
-
-    async def _run_migration_update(self, session: AsyncSession):
-        """Run the data migration UPDATE statement."""
-        await session.execute(
-            text("""
-                UPDATE users u
-                SET
-                    topics = COALESCE(
-                        (SELECT jsonb_agg(DISTINCT s.topic_id)
-                         FROM subscriptions s
-                         WHERE s.user_id = u.id),
-                        '[]'::jsonb
-                    ),
-                    enable_feishu = COALESCE(
-                        (SELECT bool_or(s.enable_feishu)
-                         FROM subscriptions s
-                         WHERE s.user_id = u.id),
-                        true
-                    ),
-                    enable_email = COALESCE(
-                        (SELECT bool_or(s.enable_email)
-                         FROM subscriptions s
-                         WHERE s.user_id = u.id),
-                        true
-                    )
-            """)
-        )
-        await session.commit()
-
     @pytest.mark.asyncio
     async def test_single_subscription(self, async_session, test_topics):
         """Test user with exactly one subscription."""
         topic_id = str(test_topics[0].id)
 
-        user_id = await self._create_user_with_subscriptions(
+        user_id = await _create_user_with_subscriptions(
             session=async_session,
-            email="single_sub",
+            email_prefix="single_sub",
             topic_ids=[topic_id],
             feishu_flags=[False],
             email_flags=[True],
         )
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT topics, enable_feishu, enable_email FROM users WHERE id = :id"),
@@ -462,15 +417,15 @@ class TestMigrationEdgeCases:
         feishu_flags = [True] * 15
         email_flags = [True] * 15
 
-        user_id = await self._create_user_with_subscriptions(
+        user_id = await _create_user_with_subscriptions(
             session=async_session,
-            email="many_subs",
+            email_prefix="many_subs",
             topic_ids=topic_ids,
             feishu_flags=feishu_flags,
             email_flags=email_flags,
         )
 
-        await self._run_migration_update(async_session)
+        await _run_migration_update(async_session)
 
         result = await async_session.execute(
             text("SELECT topics, enable_feishu, enable_email FROM users WHERE id = :id"),

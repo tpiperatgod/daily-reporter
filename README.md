@@ -62,6 +62,8 @@ docker-compose --profile prod up -d
 docker-compose logs -f
 ```
 
+说明：`docker-compose up` 会先启动单例迁移服务（`migrate-dev` / `migrate-prod` / `migrate-test`）执行 `alembic upgrade head`，迁移成功后再启动 app/worker/beat，避免多服务并发迁移。
+
 ### 4. 验证服务
 
 ```bash

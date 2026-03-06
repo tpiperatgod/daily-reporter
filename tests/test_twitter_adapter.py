@@ -27,56 +27,35 @@ def adapter(mock_settings):
 
 
 class TestUsernameParser:
-    """Test username parsing from various query formats."""
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("@karpathy", "karpathy"),
+            ("karpathy", "karpathy"),
+            ("from:karpathy", "karpathy"),
+            ("FROM:karpathy", "karpathy"),
+            ("  @karpathy  ", "karpathy"),
+        ],
+    )
+    def test_parse_username_valid_inputs(self, adapter, query, expected):
+        assert adapter._parse_username(query) == expected
 
-    def test_parse_username_with_at_sign(self, adapter):
-        """Test parsing username with @ prefix."""
-        assert adapter._parse_username("@karpathy") == "karpathy"
-
-    def test_parse_username_without_at_sign(self, adapter):
-        """Test parsing username without @ prefix."""
-        assert adapter._parse_username("karpathy") == "karpathy"
-
-    def test_parse_username_from_operator(self, adapter):
-        """Test parsing username from 'from:' operator."""
-        assert adapter._parse_username("from:karpathy") == "karpathy"
-
-    def test_parse_username_case_insensitive(self, adapter):
-        """Test case-insensitive parsing."""
-        assert adapter._parse_username("FROM:karpathy") == "karpathy"
-
-    def test_parse_username_with_whitespace(self, adapter):
-        """Test parsing with leading/trailing whitespace."""
-        assert adapter._parse_username("  @karpathy  ") == "karpathy"
-
-    def test_parse_username_invalid_format(self, adapter):
-        """Test error on invalid format with no extractable username."""
+    @pytest.mark.parametrize("query", ["!!!@@@###", "@thisusernameistoolong"])
+    def test_parse_username_invalid_inputs(self, adapter, query):
         with pytest.raises(ValueError, match="Could not extract valid username"):
-            adapter._parse_username("!!!@@@###")
-
-    def test_parse_username_too_long(self, adapter):
-        """Test error on username exceeding 15 characters."""
-        with pytest.raises(ValueError, match="Could not extract valid username"):
-            adapter._parse_username("@thisusernameistoolong")
+            adapter._parse_username(query)
 
 
 class TestQueryBuilder:
-    """Test Twitter advanced search query building."""
-
-    def test_build_query_basic(self, adapter):
-        """Test basic query without since_id."""
-        query = adapter._build_query("karpathy")
-        assert query == "from:karpathy"
-
-    def test_build_query_with_since_id(self, adapter):
-        """Test query with since_id parameter."""
-        query = adapter._build_query("karpathy", since_id="2017297261160812716")
-        assert query == "from:karpathy since_id:2017297261160812716"
-
-    def test_build_query_none_since_id(self, adapter):
-        """Test query with None since_id."""
-        query = adapter._build_query("karpathy", since_id=None)
-        assert query == "from:karpathy"
+    @pytest.mark.parametrize(
+        ("since_id", "expected"),
+        [
+            (None, "from:karpathy"),
+            ("2017297261160812716", "from:karpathy since_id:2017297261160812716"),
+        ],
+    )
+    def test_build_query(self, adapter, since_id, expected):
+        assert adapter._build_query("karpathy", since_id=since_id) == expected
 
 
 class TestTimestampParser:
@@ -113,45 +92,33 @@ class TestTimestampParser:
 
 
 class TestMediaExtraction:
-    """Test media URL extraction from tweet entities."""
-
-    def test_extract_media_urls_empty(self, adapter):
-        """Test extraction from tweet without media."""
-        tweet = {"entities": {}}
-        result = adapter._extract_media_urls(tweet)
-        assert result == []
-
-    def test_extract_media_urls_single(self, adapter):
-        """Test extraction of single media URL."""
-        tweet = {
-            "entities": {
-                "media": [
-                    {"url": "https://pbs.twimg.com/media/image1.jpg"}
-                ]
-            }
-        }
-        result = adapter._extract_media_urls(tweet)
-        assert result == ["https://pbs.twimg.com/media/image1.jpg"]
-
-    def test_extract_media_urls_multiple(self, adapter):
-        """Test extraction of multiple media URLs."""
-        tweet = {
-            "entities": {
-                "media": [
-                    {"url": "https://pbs.twimg.com/media/image1.jpg"},
-                    {"url": "https://pbs.twimg.com/media/image2.jpg"}
-                ]
-            }
-        }
-        result = adapter._extract_media_urls(tweet)
-        assert len(result) == 2
-        assert "https://pbs.twimg.com/media/image1.jpg" in result
-
-    def test_extract_media_urls_missing_entities(self, adapter):
-        """Test extraction when entities key is missing."""
-        tweet = {}
-        result = adapter._extract_media_urls(tweet)
-        assert result == []
+    @pytest.mark.parametrize(
+        ("tweet", "expected"),
+        [
+            ({}, []),
+            ({"entities": {}}, []),
+            (
+                {"entities": {"media": [{"url": "https://pbs.twimg.com/media/image1.jpg"}]}},
+                ["https://pbs.twimg.com/media/image1.jpg"],
+            ),
+            (
+                {
+                    "entities": {
+                        "media": [
+                            {"url": "https://pbs.twimg.com/media/image1.jpg"},
+                            {"url": "https://pbs.twimg.com/media/image2.jpg"},
+                        ]
+                    }
+                },
+                [
+                    "https://pbs.twimg.com/media/image1.jpg",
+                    "https://pbs.twimg.com/media/image2.jpg",
+                ],
+            ),
+        ],
+    )
+    def test_extract_media_urls(self, adapter, tweet, expected):
+        assert adapter._extract_media_urls(tweet) == expected
 
 
 class TestMetricsExtraction:
@@ -159,27 +126,13 @@ class TestMetricsExtraction:
 
     def test_extract_metrics_all_present(self, adapter):
         """Test extraction when all metrics are present."""
-        tweet = {
-            "likeCount": 100,
-            "retweetCount": 50,
-            "replyCount": 25,
-            "quoteCount": 10,
-            "viewCount": 1000
-        }
+        tweet = {"likeCount": 100, "retweetCount": 50, "replyCount": 25, "quoteCount": 10, "viewCount": 1000}
         result = adapter._extract_metrics(tweet)
-        assert result == {
-            "likes": 100,
-            "retweets": 50,
-            "replies": 25,
-            "quotes": 10,
-            "views": 1000
-        }
+        assert result == {"likes": 100, "retweets": 50, "replies": 25, "quotes": 10, "views": 1000}
 
     def test_extract_metrics_missing_fields(self, adapter):
         """Test extraction with missing metrics (defaults to 0)."""
-        tweet = {
-            "likeCount": 100
-        }
+        tweet = {"likeCount": 100}
         result = adapter._extract_metrics(tweet)
         assert result["likes"] == 100
         assert result["retweets"] == 0
@@ -197,16 +150,12 @@ class TestTweetMapping:
             "text": "This is a test tweet",
             "url": "https://x.com/karpathy/status/2017297261160812716",
             "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
-            "entities": {
-                "media": [
-                    {"url": "https://pbs.twimg.com/media/image.jpg"}
-                ]
-            },
+            "entities": {"media": [{"url": "https://pbs.twimg.com/media/image.jpg"}]},
             "likeCount": 500,
             "retweetCount": 100,
             "replyCount": 50,
             "quoteCount": 20,
-            "viewCount": 10000
+            "viewCount": 10000,
         }
 
         result = adapter._map_tweet_to_raw_item(tweet)
@@ -227,7 +176,7 @@ class TestTweetMapping:
             "author": {"userName": "testuser"},
             "text": "Minimal tweet",
             "url": "https://x.com/testuser/status/123456789",
-            "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
+            "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
         }
 
         result = adapter._map_tweet_to_raw_item(tweet)
@@ -243,7 +192,7 @@ class TestTweetMapping:
             # Missing author
             "text": "Test",
             "url": "https://x.com/test/status/123",
-            "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
+            "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
         }
 
         with pytest.raises(KeyError):
@@ -263,18 +212,15 @@ class TestAPIFetch:
                     "author": {"userName": "test"},
                     "text": "Test tweet",
                     "url": "https://x.com/test/status/123",
-                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
                 }
             ],
             "has_next_page": False,
-            "next_cursor": None
+            "next_cursor": None,
         }
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_get = AsyncMock(return_value=MagicMock(
-                status_code=200,
-                json=lambda: mock_response
-            ))
+            mock_get = AsyncMock(return_value=MagicMock(status_code=200, json=lambda: mock_response))
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
             result = await adapter._fetch_page("from:test")
@@ -289,11 +235,9 @@ class TestAPIFetch:
             mock_response = MagicMock()
             mock_response.status_code = 401
             mock_response.text = "Unauthorized"
-            mock_get = AsyncMock(side_effect=httpx.HTTPStatusError(
-                "Unauthorized",
-                request=MagicMock(),
-                response=mock_response
-            ))
+            mock_get = AsyncMock(
+                side_effect=httpx.HTTPStatusError("Unauthorized", request=MagicMock(), response=mock_response)
+            )
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
             with pytest.raises(ValueError, match="authentication failed"):
@@ -306,11 +250,9 @@ class TestAPIFetch:
             mock_response = MagicMock()
             mock_response.status_code = 429
             mock_response.text = "Rate limit exceeded"
-            mock_get = AsyncMock(side_effect=httpx.HTTPStatusError(
-                "Rate limit",
-                request=MagicMock(),
-                response=mock_response
-            ))
+            mock_get = AsyncMock(
+                side_effect=httpx.HTTPStatusError("Rate limit", request=MagicMock(), response=mock_response)
+            )
             mock_client.return_value.__aenter__.return_value.get = mock_get
 
             with pytest.raises(httpx.HTTPStatusError):
@@ -330,14 +272,14 @@ class TestPagination:
                     "author": {"userName": "test"},
                     "text": "Test",
                     "url": "https://x.com/test/status/123",
-                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025"
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
                 }
             ],
             "has_next_page": False,
-            "next_cursor": None
+            "next_cursor": None,
         }
 
-        with patch.object(adapter, '_fetch_page', new=AsyncMock(return_value=mock_response)):
+        with patch.object(adapter, "_fetch_page", new=AsyncMock(return_value=mock_response)):
             result = await adapter._fetch_all_pages("from:test", max_items=100)
 
             assert len(result) == 1
@@ -347,18 +289,34 @@ class TestPagination:
     async def test_fetch_all_pages_multiple_pages(self, adapter):
         """Test fetching multiple pages."""
         page1 = {
-            "tweets": [{"id": "1", "author": {"userName": "t"}, "text": "T1", "url": "url1", "createdAt": "Fri Jan 31 12:00:00 +0000 2025"}],
+            "tweets": [
+                {
+                    "id": "1",
+                    "author": {"userName": "t"},
+                    "text": "T1",
+                    "url": "url1",
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
+                }
+            ],
             "has_next_page": True,
-            "next_cursor": "cursor1"
+            "next_cursor": "cursor1",
         }
         page2 = {
-            "tweets": [{"id": "2", "author": {"userName": "t"}, "text": "T2", "url": "url2", "createdAt": "Fri Jan 31 12:00:00 +0000 2025"}],
+            "tweets": [
+                {
+                    "id": "2",
+                    "author": {"userName": "t"},
+                    "text": "T2",
+                    "url": "url2",
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
+                }
+            ],
             "has_next_page": False,
-            "next_cursor": None
+            "next_cursor": None,
         }
 
         mock_fetch = AsyncMock(side_effect=[page1, page2])
-        with patch.object(adapter, '_fetch_page', new=mock_fetch):
+        with patch.object(adapter, "_fetch_page", new=mock_fetch):
             result = await adapter._fetch_all_pages("from:test", max_items=100)
 
             assert len(result) == 2
@@ -370,14 +328,20 @@ class TestPagination:
         """Test that pagination stops at max_items."""
         mock_response = {
             "tweets": [
-                {"id": str(i), "author": {"userName": "t"}, "text": f"T{i}", "url": f"url{i}", "createdAt": "Fri Jan 31 12:00:00 +0000 2025"}
+                {
+                    "id": str(i),
+                    "author": {"userName": "t"},
+                    "text": f"T{i}",
+                    "url": f"url{i}",
+                    "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
+                }
                 for i in range(20)
             ],
             "has_next_page": True,
-            "next_cursor": "cursor"
+            "next_cursor": "cursor",
         }
 
-        with patch.object(adapter, '_fetch_page', new=AsyncMock(return_value=mock_response)):
+        with patch.object(adapter, "_fetch_page", new=AsyncMock(return_value=mock_response)):
             result = await adapter._fetch_all_pages("from:test", max_items=10)
 
             assert len(result) == 10
@@ -397,19 +361,16 @@ class TestEndToEndFetch:
                     "text": "Test tweet",
                     "url": "https://x.com/karpathy/status/2017297261160812716",
                     "createdAt": "Fri Jan 31 12:00:00 +0000 2025",
-                    "likeCount": 100
+                    "likeCount": 100,
                 }
             ],
             "has_next_page": False,
-            "next_cursor": None
+            "next_cursor": None,
         }
 
-        with patch.object(adapter, '_fetch_page', new=AsyncMock(return_value=mock_response)):
+        with patch.object(adapter, "_fetch_page", new=AsyncMock(return_value=mock_response)):
             result = await adapter.fetch(
-                query="@karpathy",
-                start_date=datetime(2025, 1, 1),
-                end_date=datetime(2025, 1, 31),
-                max_items=100
+                query="@karpathy", start_date=datetime(2025, 1, 1), end_date=datetime(2025, 1, 31), max_items=100
             )
 
             assert len(result) == 1
@@ -419,19 +380,15 @@ class TestEndToEndFetch:
     @pytest.mark.asyncio
     async def test_fetch_with_since_id(self, adapter):
         """Test fetch with since_id parameter."""
-        mock_response = {
-            "tweets": [],
-            "has_next_page": False,
-            "next_cursor": None
-        }
+        mock_response = {"tweets": [], "has_next_page": False, "next_cursor": None}
 
         mock_fetch = AsyncMock(return_value=mock_response)
-        with patch.object(adapter, '_fetch_page', new=mock_fetch):
+        with patch.object(adapter, "_fetch_page", new=mock_fetch):
             await adapter.fetch(
                 query="karpathy",
                 start_date=datetime(2025, 1, 1),
                 end_date=datetime(2025, 1, 31),
-                since_id="2017297261160812716"
+                since_id="2017297261160812716",
             )
 
             # Verify query includes since_id
@@ -446,8 +403,4 @@ class TestEndToEndFetch:
         # This test verifies the extraction works, not that it rejects the input
         # Authentication will fail with invalid API key, but username parsing succeeds
         with pytest.raises(ValueError, match="Twitter API authentication failed"):
-            await adapter.fetch(
-                query="!!!invalid!!!",
-                start_date=datetime(2025, 1, 1),
-                end_date=datetime(2025, 1, 31)
-            )
+            await adapter.fetch(query="!!!invalid!!!", start_date=datetime(2025, 1, 1), end_date=datetime(2025, 1, 31))

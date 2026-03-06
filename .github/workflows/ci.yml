@@ -88,4 +88,4 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short --ignore=tests/test_thinking_json_mode.py
+        run: pytest tests/ -v --tb=short

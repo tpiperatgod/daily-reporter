@@ -1,7 +1,16 @@
-"""Test configuration and fixtures."""
+import os
 
 import pytest
-import asyncio
 
-# Register fixtures from users_topics module
-pytest_plugins = ["tests.fixtures.users_topics"]
+from tests.environment_contract import TestEnvironmentContract
+
+
+def _should_enforce_test_contract() -> bool:
+    return os.getenv("XND_ENFORCE_TEST_CONTRACT") == "1" or os.getenv("ENVIRONMENT") == "test"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def verify_test_environment() -> None:
+    if not _should_enforce_test_contract():
+        return
+    TestEnvironmentContract().assert_valid()

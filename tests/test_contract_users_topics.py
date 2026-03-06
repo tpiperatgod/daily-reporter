@@ -300,7 +300,6 @@ class TestChannelFlagsValidation:
         assert user.enable_email is True
 
 
-
 # ============================================================================
 # Test Cases: No-Compat Constraints
 # ============================================================================
@@ -405,11 +404,9 @@ class TestContractIntegration:
         assert user.enable_feishu is True
         assert user.enable_email is False
 
-
         new_topic_ids = topic_ids + [str(uuid4())]
         update = UserUpdateContract(topics=new_topic_ids)
         assert len(update.topics) == 4  # type: ignore
-
 
         channel_update = UserUpdateContract(enable_email=True)
         assert channel_update.enable_email is True

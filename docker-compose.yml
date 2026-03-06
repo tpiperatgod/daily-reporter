@@ -9,14 +9,42 @@ x-app-common: &app-common
     - REDIS_URL=redis://redis:6379/0
     - CELERY_BROKER_URL=redis://redis:6379/0
     - CELERY_RESULT_BACKEND=redis://redis:6379/0
-  depends_on:
-    postgres:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
+
+x-dev-runtime-depends: &dev-runtime-depends
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  migrate-dev:
+    condition: service_completed_successfully
+
+x-prod-runtime-depends: &prod-runtime-depends
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  migrate-prod:
+    condition: service_completed_successfully
+
+x-test-runtime-depends: &test-runtime-depends
+  postgres-test:
+    condition: service_healthy
+  redis-test:
+    condition: service_healthy
+  migrate-test:
+    condition: service_completed_successfully
+
+x-test-env: &test-env
+  - DATABASE_URL=postgresql+asyncpg://xnews:xnews_password@postgres-test:5432/xnews_digest_test
+  - REDIS_URL=redis://redis-test:6379/1
+  - CELERY_BROKER_URL=redis://redis-test:6379/1
+  - CELERY_RESULT_BACKEND=redis://redis-test:6379/1
+  - ENVIRONMENT=test
+  - X_PROVIDER=MOCK
+  - XND_ENFORCE_TEST_CONTRACT=1
 
 services:
-  # ── Infrastructure (always starts) ──
+  # ── Dev profile ──
   postgres:
     image: postgres:15-alpine
     container_name: x-news-postgres
@@ -33,6 +61,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["dev", "prod"]
     restart: unless-stopped
 
   redis:
@@ -45,13 +74,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["dev", "prod"]
     restart: unless-stopped
 
-  # ── Dev profile ──
+  migrate-dev:
+    <<: *app-common
+    container_name: xnd-migrate-dev
+    profiles: ["dev"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: alembic upgrade head
+    restart: "no"
+
   app-dev:
     <<: *app-common
     container_name: xnd-app
     profiles: ["dev"]
+    depends_on: *dev-runtime-depends
     ports:
       - "8000:8000"
     volumes:
@@ -67,6 +109,7 @@ services:
     <<: *app-common
     container_name: xnd-worker
     profiles: ["dev"]
+    depends_on: *dev-runtime-depends
     volumes:
       - .:/app
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
@@ -75,15 +118,27 @@ services:
     <<: *app-common
     container_name: xnd-beat
     profiles: ["dev"]
+    depends_on: *dev-runtime-depends
     volumes:
       - .:/app
     command: celery -A app.workers.celery_app beat --loglevel=info
 
   # ── Prod profile ──
+  migrate-prod:
+    <<: *app-common
+    container_name: xnd-migrate-prod
+    profiles: ["prod"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: alembic upgrade head
+    restart: "no"
+
   app-prod:
     <<: *app-common
     container_name: xnd-app
     profiles: ["prod"]
+    depends_on: *prod-runtime-depends
     ports:
       - "8000:8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
@@ -104,6 +159,7 @@ services:
     <<: *app-common
     container_name: xnd-worker
     profiles: ["prod"]
+    depends_on: *prod-runtime-depends
     command: celery -A app.workers.celery_app worker --loglevel=warning --concurrency=2
     restart: unless-stopped
     deploy:
@@ -116,6 +172,7 @@ services:
     <<: *app-common
     container_name: xnd-beat
     profiles: ["prod"]
+    depends_on: *prod-runtime-depends
     command: celery -A app.workers.celery_app beat --loglevel=warning --schedule=/tmp/celerybeat-schedule
     restart: unless-stopped
     deploy:
@@ -124,5 +181,76 @@ services:
           memory: 256M
           cpus: "0.5"
 
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: xnd-test-postgres
+    environment:
+      POSTGRES_USER: xnews
+      POSTGRES_PASSWORD: xnews_password
+      POSTGRES_DB: xnews_digest_test
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xnews"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["test"]
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: xnd-test-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["test"]
+
+  migrate-test:
+    <<: *app-common
+    container_name: xnd-test-migrate
+    profiles: ["test"]
+    environment: *test-env
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: alembic upgrade head
+    restart: "no"
+
+  app-test:
+    <<: *app-common
+    container_name: xnd-test-app
+    profiles: ["test"]
+    ports:
+      - "8001:8000"
+    environment: *test-env
+    depends_on: *test-runtime-depends
+    volumes:
+      - .:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker-test:
+    <<: *app-common
+    container_name: xnd-test-worker
+    profiles: ["test"]
+    environment: *test-env
+    depends_on: *test-runtime-depends
+    volumes:
+      - .:/app
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1
+
 volumes:
   postgres_data:
+  postgres_test_data:

@@ -120,6 +120,8 @@ docker-compose exec app ruff check app/
 docker-compose exec app ruff format --check app/
 ```
 
+Compose profiles now use a dedicated one-shot migration service (`migrate-dev`, `migrate-prod`, `migrate-test`) as the single schema writer. Runtime services (app/worker/beat) are schema consumers and should not run `alembic upgrade head` in shared entrypoints.
+
 ### Local Development (Without Docker)
 
 ```bash
@@ -242,6 +244,8 @@ OPENAI_EMBEDDING_API_KEY=xxx.yyy
 ```
 
 ## Database Migrations with Alembic
+
+For Docker Compose startup flows, migrations are executed by profile-specific migrator services (`migrate-dev`, `migrate-prod`, `migrate-test`) before runtime services start.
 
 ```bash
 # Create a new migration after model changes
