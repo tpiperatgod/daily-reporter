@@ -4,502 +4,110 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-X-News-Digest is an automated Twitter/X news digest system that collects tweets based on search queries, generates AI-powered summaries using LLMs, and delivers digests via Feishu webhooks or email. The system uses incremental data collection with `since_id` to minimize API calls by 90%+.
+`twx` is a JSON-first CLI that wraps [twitterapi.io](https://twitterapi.io) read APIs for agent workflows. No database, no web server, no task queue — just a CLI that outputs stable JSON to stdout.
 
-**Tech Stack:**
-- Backend: FastAPI + Uvicorn (async Python)
-- Database: PostgreSQL with Alembic migrations
-- Task Queue: Celery + Redis (for scheduled collection and digest generation)
-- Frontend: Next.js 16 + React 19 + Tailwind CSS v4
-- CLI: Click-based `xndctl` tool
-- LLM: Pluggable providers (DeepSeek/OpenAI/GLM) for chat and embeddings
-- Data Sources: Twitter API (twitterapi.io), with Mock adapter for testing
+**Tech stack:** Python 3.10+, Click, httpx, Pydantic v2, pytest, Ruff
 
-## Core Architecture
-
-### Three-Tier System
-
-1. **FastAPI Application** (`app/main.py`)
-   - REST API with health checks, CORS, and auto-documented endpoints
-   - Routers: users, topics
-   - Async database sessions via SQLAlchemy
-   - Startup checks for database, Redis, and Celery workers
-2. **Celery Workers** (`app/workers/`)
-   - `celery_app.py`: Configuration and task auto-discovery
-   - `tasks.py`: Core pipeline tasks (collect_user_topics, generate_user_digest, notify_user_digest)
-   - `beat_schedule.py`: Dynamic cron schedule from database users (topic-scoped scheduling decommissioned)
-   - All tasks use async/await pattern wrapped in `asyncio.run()`
-
-3. **Web UI** (`webui/`)
-   - Next.js App Router with React Server Components
-   - SWR for data fetching and caching
-   - Responsive design with Tailwind CSS v4
-   - Home page redirects to `/archive` for digest browsing
-
-### Data Pipeline Flow
-
-#### User-Scoped Pipeline (Active)
-```
-User (cron schedule) → Celery Beat → collect_user_topics task
-  ↓
-For each topic in user.topics:
-  TwitterAPIAdapter.fetch_items(since_id=topic.last_tweet_id)
-  ↓
-Aggregate all items from all topics
-  ↓
-generate_user_digest task (LLM summarization of aggregated items)
-  ↓
-notify_user_digest task → Feishu/Email delivery
-```
-
-**Key Features**:
-- User-scoped pipeline generates a single aggregated digest from all topics in `user.topics`
-- User-scoped is triggered via `POST /users/{user_id}/trigger`
-- Notification channels determined by user-level flags: `enable_feishu`, `enable_email`
-
-### Key Database Models (`app/db/models.py`)
-
-- **User**: Email, Feishu webhook credentials, `topics` (JSONB array), `enable_feishu`, `enable_email` flags
-- **Topic**: Search query, cron schedule, `last_tweet_id` (critical for incremental fetch)
-- **Item**: Raw tweet data with `source_id` (unique), `embedding_hash` (deduplication)
-- **Digest**: Generated summary with time window and JSON structure
-- **Delivery**: Notification tracking (status, retry_count, error_msg)
-
-**Note**: The `Subscription` model has been removed. User-topic relationships are now stored in `users.topics` JSONB array.
-### Provider System (`app/services/provider/`)
-
-Factory pattern in `factory.py` returns the correct adapter based on `X_PROVIDER` env var:
-- **TwitterAPIAdapter**: Production-ready, uses `since_id` for incremental fetch
-- **MockAdapter**: Development/testing with fake data
-
-**Critical**: When adding new providers, implement `fetch_items()` with optional `since_id` parameter to support incremental collection.
-
-### LLM Integration (`app/services/llm/`)
-
-Two separate LLM configurations:
-- **Chat API** (`LLM_CHAT_*`): Digest summarization
-- **Embedding API** (`LLM_EMBEDDING_*`): Semantic deduplication (supports OpenAI-compatible or Ollama)
-
-Both use retry logic with exponential backoff for rate limit handling.
-
-### CLI Tool (`cli/xndctl/`)
-
-User-friendly CLI wrapping the REST API:
-- Interactive prompts with `questionary` for all CRUD operations
-- Output formats: table (default), JSON, YAML
-- Configuration stored in `~/.xndctl/config.yaml`
-- Entry point: `xndctl` command (installed via `pip install -e cli/`)
-
-## Development Commands
-
-### Docker-based Development (Recommended)
+## Developer Commands
 
 ```bash
-# Start all services (app, worker, beat, postgres, redis)
-docker-compose up -d
+pip install -e .                              # Install CLI (provides `twx` command)
+pip install -r requirements.txt               # Install all deps (includes pytest, ruff)
 
-# View logs
-docker-compose logs -f app      # API service
-docker-compose logs -f worker   # Task executor
-docker-compose logs -f beat     # Scheduler
+pytest tests/twx -v                           # Run all 69 tests
+pytest tests/twx/test_transform.py -v         # Run single test file
+pytest tests/twx -k "test_normalize" -v       # Run tests matching pattern
 
-# Database migrations (see "Database Migrations with Alembic" section below for details)
-docker-compose exec app alembic upgrade head
-
-# Run tests
-docker-compose exec app pytest tests/ -v
-
-# Run specific test file
-docker-compose exec app pytest tests/test_twitter_adapter.py -v
-
-# Test with coverage
-docker-compose exec app pytest tests/ --cov=app --cov-report=html
-
-# Code quality (see "Code Quality" section below for details)
-docker-compose exec app ruff check app/
-docker-compose exec app ruff format --check app/
+ruff check twx tests/twx                      # Lint
+ruff format --check twx tests/twx             # Check formatting
+ruff format twx tests/twx                     # Apply formatting
 ```
 
-Compose profiles now use a dedicated one-shot migration service (`migrate-dev`, `migrate-prod`, `migrate-test`) as the single schema writer. Runtime services (app/worker/beat) are schema consumers and should not run `alembic upgrade head` in shared entrypoints.
+CI runs on Python 3.11: lint → format check → test. No services needed (no Postgres, Redis, Docker).
 
-### Local Development (Without Docker)
-
-```bash
-# Activate conda environment
-./start-local.sh
-
-# Or manually:
-conda activate x-news-digest
-pip install -r requirements.txt
-
-# Start services individually
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
-celery -A app.workers.celery_app beat --loglevel=info
-
-# Monitor Celery tasks with Flower (optional)
-celery -A app.workers.celery_app flower --port=5555
-# For detailed Flower monitoring, see "Troubleshooting" section below
-```
-
-**Note:** Python >=3.10 is required (see `pyproject.toml`). The `start-local.sh` script uses Python 3.13.
-
-### Web UI Development
-
-```bash
-cd webui/
-npm install
-npm run dev      # Development server on http://localhost:3000
-npm run build    # Production build
-npm run lint     # ESLint
-```
-
-### CLI Development
-
-```bash
-cd cli/
-pip install -e .    # Install in editable mode
-xndctl config       # View configuration
-xndctl user ls      # Test command
-```
-
-## Code Quality
-
-```bash
-# Run linter
-ruff check app/
-
-# Format code
-ruff format app/
-
-# Check formatting without making changes
-ruff format --check app/
-```
-
-> **Docker equivalent:** See Docker-based Development section above for `docker-compose exec app ruff ...` commands.
-
-## Testing
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific test patterns
-pytest tests/ -k "twitter" -v
-pytest tests/test_integration_twitter.py::test_incremental_collection -v
-
-# Run with coverage
-pytest tests/ --cov=app --cov-report=html
-
-# Note: test_thinking_json_mode.py is excluded in CI but can be run locally
-```
-
-> **Docker equivalent:** See Docker-based Development section above for `docker-compose exec app pytest ...` commands.
-
-**Important Test Files:**
-- `tests/test_twitter_adapter.py`: Unit tests for Twitter API integration
-- `tests/test_integration_twitter.py`: End-to-end incremental collection tests
-- `tests/test_thinking_json_mode.py`: LLM JSON mode validation
-
-## Configuration
-
-### Environment Variables (`.env`)
-
-**Critical Variables:**
-- `X_PROVIDER`: "TWITTER_API" (production) or "MOCK" (dev/test)
-- `TWITTER_API_KEY`: From twitterapi.io (required for TWITTER_API provider)
-- `LLM_CHAT_API_KEY` + `LLM_CHAT_BASE_URL`: For digest generation
-- `LLM_EMBEDDING_PROVIDER`: "openai" or "ollama"
-- `OPENAI_EMBEDDING_API_KEY` + `OPENAI_EMBEDDING_BASE_URL`: If using OpenAI-compatible embeddings
-- `EMAIL_LOG_ONLY`: Set to `False` to enable actual email sending (defaults to True)
-
-**Database URLs:**
-- Docker: `postgresql+asyncpg://xnews:xnews_password@postgres:5432/xnews_digest`
-- Local: Update `.env` with your local PostgreSQL instance
-
-### Timezone Configuration
-
-**CRON_TIMEZONE:** Timezone for cron expressions (default: `Asia/Shanghai` for CST/UTC+8)
-- Cron expressions in the database are interpreted in this timezone
-- Valid values: IANA timezone names (e.g., `America/New_York`, `Europe/London`, `Asia/Shanghai`)
-- Example: If `CRON_TIMEZONE=Asia/Shanghai` and `cron_expression="53 9 * * *"`:
-  - Tasks trigger at 9:53 AM CST (China Standard Time)
-  - Internally converted to 1:53 AM UTC for Celery Beat
-- To use UTC time for cron expressions, set `CRON_TIMEZONE=UTC`
-
-### Multi-Provider LLM Setup
-
-You can use different LLM providers for chat and embeddings. Example configurations:
-
-```bash
-# Use DeepSeek for chat, GLM for embeddings
-LLM_CHAT_BASE_URL=https://api.deepseek.com
-LLM_CHAT_MODEL=deepseek-chat
-LLM_CHAT_API_KEY=sk-xxx
-
-LLM_EMBEDDING_PROVIDER=openai
-OPENAI_EMBEDDING_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-OPENAI_EMBEDDING_MODEL=embedding-3
-OPENAI_EMBEDDING_API_KEY=xxx.yyy
-```
-
-## Database Migrations with Alembic
-
-For Docker Compose startup flows, migrations are executed by profile-specific migrator services (`migrate-dev`, `migrate-prod`, `migrate-test`) before runtime services start.
-
-```bash
-# Create a new migration after model changes
-alembic revision --autogenerate -m "add new field to topic"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback one migration
-alembic downgrade -1
-
-# View migration history
-alembic history
-```
-
-### Migration Filename Convention
-
-All migration files must follow this naming format:
+## Architecture
 
 ```
-YYYYMMDD_HHMM_<revision>_<slug>.py
+twx/
+├── cli.py           # Click group entrypoint, registers user/search/trending commands
+├── client.py        # TwitterApiClient — httpx wrapper for twitterapi.io
+├── config.py        # Settings class (reads TWITTER_API_KEY, TWX_API_BASE_URL, TWX_DEFAULT_LIMIT)
+├── errors.py        # TWXError hierarchy: ConfigError(2), UpstreamError(3), TransformError(4)
+├── models.py        # Pydantic models: NormalizedTweet, SuccessEnvelope, ErrorEnvelope
+├── state.py         # load_state/save_state for --state-file checkpoint JSON
+├── transform.py     # normalize_tweet(), extract_metrics(), extract_media(), parse_created_at()
+└── commands/
+    ├── user.py      # fetch_user_tweets() — fetch, normalize, filter by since/until, limit
+    ├── search.py    # fetch_search_tweets() — search, normalize, limit
+    └── trending.py  # fetch_trending_tweets() + rank_by_engagement()
 ```
 
-**Generation command:**
-```bash
-alembic revision --autogenerate -m "add new field to topic"
-```
+Tests mirror the package: `tests/twx/test_<module>.py`.
 
-Alembic automatically generates compliant filenames. Never manually rename migration files after creation.
+## Key Patterns
 
-**Example:**
-```
-20260201_1938_f771473dec7c_add_feishu_webhook_secret_to_users.py
-```
+### Command execution flow
 
-**Developer Checklist:**
-- [ ] Always use `alembic revision --autogenerate -m "description"` to create migrations
-- [ ] Verify the auto-generated filename follows the convention before committing
-- [ ] Never manually rename migration files after creation
-- [ ] Filenames are auto-generated by Alembic based on `alembic.ini` template
+Every command follows the same pattern:
+1. `Settings()` → `require_api_key()` → `TwitterApiClient(api_key=, base_url=)`
+2. Client calls upstream API → returns raw dict
+3. Command extracts tweets from response (with fallback — see below)
+4. `normalize_tweet()` per tweet → `SuccessEnvelope` with `model_dump_json()` to stdout
+5. Errors → `TWXError` subclass → `_handle_error()` writes JSON to stderr + exit code
 
+### Upstream response structure varies by endpoint
 
+The twitterapi.io API returns tweets in different locations depending on the endpoint:
+- **User timeline**: `response.data.tweets` (dict containing a tweets array)
+- **Search**: `response.tweets` at top level, OR `response.data.tweets`
 
-**Note:** All legacy migration scripts have been removed. The `alembic/versions/` directory is empty and ready for a new baseline migration. To create a fresh baseline after schema changes, run `alembic revision --autogenerate -m "baseline schema"`.
+All commands use a fallback chain: check `response.data.tweets`, then `response.data` if it's a list, then `response.tweets`.
 
-## API Documentation
+### Upstream field names are camelCase
 
-When the app is running:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- Health Check: http://localhost:8000/health
-- Flower (Celery monitoring): http://localhost:5555 (if started)
+twitterapi.io uses camelCase: `likeCount`, `retweetCount`, `replyCount`, `viewCount`, `bookmarkCount`, `isReply`, `isQuoteStatus`, `createdAt`, `userName`.
 
-## CI/CD
+`extract_metrics()` and `normalize_tweet()` have fallback lookups for snake_case variants but the canonical upstream names are camelCase.
 
-The project uses GitHub Actions for CI (`.github/workflows/ci.yml`):
-- **Lint job**: Runs Ruff for code quality and formatting checks
-- **Test job**: Runs full test suite with PostgreSQL and Redis services
-- Python 3.11 is used in CI (local dev supports >=3.10)
+### Error hierarchy
 
-## Key Implementation Notes
+| Error | Exit code | `error_type` | When |
+|-------|-----------|-------------|------|
+| `ConfigError` | 2 | `config_error` | Missing `TWITTER_API_KEY` |
+| `UpstreamError` | 3 | `upstream_error` | HTTP failures, rate limits (429/5xx retryable) |
+| `TransformError` | 4 | `transform_error` | Failed to normalize upstream data |
 
-### Incremental Collection (`since_id`)
+### State/checkpoint
 
-The `last_tweet_id` field on Topics enables incremental data collection:
+`--state-file path.json` enables incremental reads. The file stores `since_id` (highest tweet ID seen). On next run, the checkpoint is loaded but currently not used to filter (future enhancement).
 
-```python
-# In tasks.py:_collect_user_topics_async
-fetch_kwargs = {
-    "query": topic.query,
-    "start_date": start_date,
-    "end_date": end_date,
-    "max_items": 100,
-}
+## Conventions
 
-# Add since_id if available
-if topic.last_tweet_id:
-    sig = inspect.signature(provider.fetch)
-    if "since_id" in sig.parameters:
-        fetch_kwargs["since_id"] = topic.last_tweet_id
-```
+- **Output contract is stable**: Success envelope keys (`ok`, `data`, `paging`, `query`, `meta`, `raw`) must not change. Breaking the envelope breaks downstream consumers.
+- **Success → stdout, errors → stderr**: Never mix them.
+- **No interactive prompts, no rich tables, no databases**: This is a pipe-friendly CLI for agents.
+- **Ruff config**: line-length 120, double quotes, ignore E501/E402/E712.
+- **Test paths**: `tests/twx/` only (configured in `pyproject.toml` `testpaths`).
 
-After successful collection, update `topic.last_tweet_id` with the highest tweet ID returned.
+## Environment Variables
 
-### Async/Await in Celery Tasks
+| Variable | Required | Default |
+|----------|----------|---------|
+| `TWITTER_API_KEY` | Yes | — |
+| `TWX_API_BASE_URL` | No | `https://api.twitterapi.io` |
+| `TWX_DEFAULT_LIMIT` | No | `20` |
 
-All Celery tasks follow this pattern:
+## Adding a New Command
 
-```python
-@celery_app.task(bind=True, name="app.workers.tasks.task_name")
-def task_name(self, param: str):
-    return asyncio.run(_task_name_async(self, param))
+1. Add `fetch_xxx()` function in `twx/commands/xxx.py` — follow the same pattern as `user.py`
+2. Import and call `TwitterApiClient` method; add the method to `twx/client.py` if needed
+3. Normalize via `transform.normalize_tweet()`, wrap in `SuccessEnvelope`
+4. Add Click command in `twx/cli.py` — same try/except pattern as existing commands
+5. Add tests in `tests/twx/test_xxx_command.py` — mock the client, verify envelope structure
+6. Add a `test_repo_cleanup` check if the command removes legacy artifacts
 
-async def _task_name_async(self, param: str):
-    async with get_async_session_local()() as session:
-        # Async database operations here
-        pass
-```
+## Known Gaps
 
-### Dynamic Celery Beat Schedule
-
-The `beat_schedule.py` module updates Celery Beat schedule from database on worker startup:
-
-```python
-from app.workers.celery_app import celery_app
-celery_app.conf.beat_schedule = update_beat_schedule()
-```
-
-**Note:** Changes to Topic cron schedules require a Beat restart to take effect.
-
-**Celery Beat Schedule Files:** The `celerybeat-schedule*` database files are generated at runtime by Celery Beat and excluded from version control via `.gitignore`. These files store the scheduler's internal state and should not be committed to the repository.
-
-### Embedding-Based Deduplication
-
-Items are deduplicated using both:
-1. **Source ID uniqueness**: PostgreSQL unique constraint on `items.source_id`
-2. **Semantic similarity**: `embedding_hash` comparison with cosine similarity threshold
-
-See `app/db/utils.py:check_duplicate_by_embedding()` for implementation.
-
-## Common Development Workflows
-
-### Adding a New API Endpoint
-
-1. Define Pydantic schemas in `app/api/schemas.py` or resource-specific file
-2. Add route function in appropriate router (`app/api/topics.py`, etc.)
-3. Update `app/main.py` if adding a new router
-4. Test via Swagger UI or write integration test
-
-### Adding a New Celery Task
-
-1. Define async implementation in `app/workers/tasks.py`
-2. Wrap in sync task decorator: `@celery_app.task(bind=True)`
-3. Add to `celery_app.conf.include` if in separate module
-4. Test with `celery.send_task()` or direct invocation
-
-### Creating a New Data Provider
-
-1. Implement `BaseProvider` interface in `app/services/provider/`
-2. Add to factory in `factory.py` with new env var check
-3. Support `since_id` parameter for incremental collection
-4. Add unit tests in `tests/test_<provider>_adapter.py`
-
-### Database Schema Changes
-
-1. Modify models in `app/db/models.py`
-2. Generate migration: `alembic revision --autogenerate -m "description"`
-3. Review and edit generated migration in `alembic/versions/`
-4. Apply: `alembic upgrade head`
-5. Update schemas in `app/api/schemas.py` if needed
-
-## Troubleshooting
-
-### Local Development Logs
-
-When using `start-local.sh`, service logs are written to:
-- FastAPI: `/tmp/fastapi.log`
-- Celery Worker: `/tmp/celery_worker.log`
-- Celery Beat: `/tmp/celery_beat.log`
-
-View them with: `tail -f /tmp/fastapi.log`
-
-### Celery Tasks Not Running
-
-```bash
-# Check Beat is scheduling tasks
-docker-compose logs beat | grep "Scheduler"
-
-# Verify worker is receiving tasks
-docker-compose logs worker | grep "received"
-
-# Inspect Celery stats
-docker-compose exec worker celery -A app.workers.celery_app inspect active
-docker-compose exec worker celery -A app.workers.celery_app inspect registered
-
-# Check Flower UI for real-time task monitoring
-# Start: celery -A app.workers.celery_app flower --port=5555
-# Visit: http://localhost:5555
-```
-
-### Database Connection Issues
-
-```bash
-# Check PostgreSQL is healthy
-docker-compose exec postgres pg_isready -U xnews
-
-# Connect to database
-docker-compose exec postgres psql -U xnews -d xnews_digest
-
-# View tables
-\dt
-
-# Check topic last_tweet_id values
-SELECT name, last_tweet_id FROM topics;
-```
-
-### Twitter API Rate Limits
-
-The TwitterAPIAdapter respects twitterapi.io rate limits (20 tweets per page, max 5 pages = 100 tweets). Adjust `TWITTER_API_MAX_PAGES` in `.env` if needed.
-
-### LLM Embedding Rate Limits
-
-Configured with automatic retry logic:
-- `LLM_EMBEDDING_RETRY_MAX_ATTEMPTS`: Default 5
-- `LLM_EMBEDDING_RETRY_INITIAL_BACKOFF`: Default 1.0 seconds
-- Exponential backoff on HTTP 429 responses
-
-## Project Structure Reference
-
-```
-x-news-digest/
-├── app/
-│   ├── api/              # FastAPI routers and Pydantic schemas
-│   ├── core/             # config.py (Settings), logging.py
-│   ├── db/               # SQLAlchemy models, session, utilities
-│   ├── services/
-│   │   ├── provider/     # Data source adapters (Twitter, Mock)
-│   │   ├── llm/          # LLM client for chat and embeddings
-│   │   ├── embedding/    # OpenAI and Ollama embedding providers
-│   │   └── notifier/     # Feishu and email delivery
-│   ├── workers/          # Celery app, tasks, beat schedule
-│   └── main.py           # FastAPI application entry point
-├── alembic/              # Database migrations
-├── cli/xndctl/           # CLI tool (Click-based)
-├── webui/                # Next.js frontend
-│   ├── app/              # Next.js App Router pages
-│   ├── components/       # React components
-│   └── lib/              # API client, utilities
-├── tests/                # Pytest test suite
-├── docker-compose.yml    # Docker orchestration
-├── Dockerfile            # Application container
-├── requirements.txt      # Python dependencies
-└── .env.example          # Environment variable template
-```
-
-## CLI Usage Summary
-
-```bash
-# User management
-xndctl user create -p              # Interactive create
-xndctl user ls                     # List all users
-xndctl user get --name "John"      # Get user details
-xndctl user update --name "John" -p
-xndctl user delete --name "John"
-
-# Topic management
-xndctl topic create -p             # Interactive with cron validation
-xndctl topic ls
-xndctl topic update --name "AI News" --enable
-
-# Manual triggers
-xndctl trigger -p                  # Select user to trigger collection
-xndctl notify -p                   # Select digest and user to send
-# Configuration
-xndctl config                      # View current config
-xndctl init                        # Reinitialize config
-```
+- `twx trending` searches for the literal query "trending" — it does not use the real `/twitter/trends` endpoint (WOEID-based). This is a candidate for a future `twx trends` command.
+- `since_id` from state file is saved but not used to filter upstream requests yet.
+- No pagination support — only the first page of results is fetched.

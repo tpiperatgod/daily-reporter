@@ -43,9 +43,9 @@ include = ["twx*"]
 twx = "twx.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/your-org/x-news-digest"
-Documentation = "https://github.com/your-org/x-news-digest/blob/main/README.md"
-Repository = "https://github.com/your-org/x-news-digest"
+Homepage = "https://github.com/tpiperatgod/x-news-digest"
+Documentation = "https://github.com/tpiperatgod/x-news-digest/blob/main/README.md"
+Repository = "https://github.com/tpiperatgod/x-news-digest"
 
 [tool.ruff]
 target-version = "py311"

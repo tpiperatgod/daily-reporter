@@ -1,75 +1,47 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-/lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
+dist/
+build/
 *.egg
 
 # Virtual environments
 venv/
 env/
-ENV/
 .venv
 
-# Environment variables
+# Environment
 .env
 .env.local
 !.env.example
 
-# IDEs
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# OS
+.DS_Store
+Thumbs.db
 
 # Logs
 *.log
 logs/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Testing
+# Tools
+.ruff_cache/
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Docker
-docker-compose.override.yml
-
-# Claude Code
+# Agent / tool artifacts
 .claude/
 .mcp.json
 /.serena/
-
-# Git worktrees
-.worktrees/
-
-# Celery Beat schedule database files (generated at runtime)
-celerybeat-schedule
-celerybeat-schedule-shm
-celerybeat-schedule-wal
 /.sisyphus/
-/docs/
+.agents
+.worktrees/
+/docs/superpowers/
