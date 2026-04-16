@@ -1,1 +1,1 @@
-"""Tests package for x-news-digest."""
+"""Tests package for twx."""

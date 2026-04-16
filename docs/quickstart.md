@@ -10,8 +10,8 @@ This guide is for users and harness agents that want to install `twx` and start 
 ## Install From Source
 
 ```bash
-git clone https://github.com/tpiperatgod/x-news-digest.git
-cd x-news-digest
+git clone https://github.com/tpiperatgod/twx.git
+cd twx
 
 python3 -m venv .venv
 source .venv/bin/activate

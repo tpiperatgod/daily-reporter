@@ -25,8 +25,8 @@ Prerequisites:
 Install:
 
 ```bash
-git clone https://github.com/tpiperatgod/x-news-digest.git
-cd x-news-digest
+git clone https://github.com/tpiperatgod/twx.git
+cd twx
 
 python3 -m venv .venv
 source .venv/bin/activate
