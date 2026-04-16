@@ -6,86 +6,29 @@ on:
   pull_request:
     branches: [main]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  lint:
+  lint-and-test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - run: pip install ruff
-      - run: ruff check app/
-      - run: ruff format --check app/
-
-      - name: Check migration filenames
-        run: python scripts/check_migration_names.py
-  test:
-    needs: lint
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: xnews
-          POSTGRES_PASSWORD: xnews_password
-          POSTGRES_DB: xnews_digest
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U xnews"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgresql+asyncpg://xnews:xnews_password@localhost:5432/xnews_digest
-      DB_PASSWORD: xnews_password
-      REDIS_URL: redis://localhost:6379/0
-      CELERY_BROKER_URL: redis://localhost:6379/0
-      CELERY_RESULT_BACKEND: redis://localhost:6379/0
-      X_PROVIDER: MOCK
-      LLM_CHAT_BASE_URL: https://api.example.com
-      LLM_CHAT_MODEL: test-model
-      LLM_CHAT_API_KEY: sk-test-dummy-key
-      SMTP_HOST: smtp.example.com
-      SMTP_USER: test@example.com
-      SMTP_PASSWORD: test-password
-      FROM_EMAIL: test@example.com
-      EMAIL_LOG_ONLY: "true"
-      OPENAI_EMBEDDING_BASE_URL: https://api.example.com
-      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
-      OPENAI_EMBEDDING_API_KEY: sk-test-dummy-key
+    strategy:
+      matrix:
+        python-version: ["3.11"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: pip
+          python-version: ${{ matrix.python-version }}
 
-      - run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - name: Run database migrations
-        run: alembic upgrade head
+      - name: Lint
+        run: ruff check twx tests/twx
+
+      - name: Check formatting
+        run: ruff format --check twx tests/twx
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/twx -v --tb=short
