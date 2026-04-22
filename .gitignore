@@ -38,10 +38,17 @@ logs/
 htmlcov/
 
 # Agent / tool artifacts
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/twitter-daily-report/
+.claude/skills/twitter-daily-report/watchlists/*
+!.claude/skills/twitter-daily-report/watchlists/README.md
 .mcp.json
 /.serena/
 /.sisyphus/
 .agents
 .worktrees/
 /docs/superpowers/
+/docs/reports/
+/docs/daily-report-sop.md

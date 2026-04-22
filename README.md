@@ -74,6 +74,18 @@ twx trending --ranking engagement --limit 20
 
 命令示例和参数说明见 [Commands](docs/commands.md)。
 
+## Claude Code Skill
+
+仓库内置了一个 Claude Code skill：[`.claude/skills/twitter-daily-report/`](.claude/skills/twitter-daily-report/SKILL.md)，把 `twx` 包装成自动化的每日 Tech Twitter 日报流程。
+
+在 Claude Code 里说「今日日报」/「技术推特日报」/「today's report」就会触发完整流水线：
+
+1. 并行调用 `twx user` 抓取一批预设的 Tech Twitter 账号。
+2. 用 `♥ + 2×🔁 + 3×💬` 打分,挑出头条。
+3. 渲染成 Markdown 报告,输出到 `docs/reports/daily-YYYY-MM-DD.md`。
+
+账号清单写在 `scripts/fetch_tweets.sh`(`ACCOUNTS`)和 `scripts/analyze.py`(`ROLES`、`DISPLAY_NAMES`),要自定义就改这两处。个人 watchlist 放在 `watchlists/` 下,默认 gitignore。
+
 ## License
 
 MIT

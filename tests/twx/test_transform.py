@@ -8,6 +8,7 @@ from twx.transform import (
     extract_metrics,
     normalize_tweet,
     normalize_user,
+    parse_created_at,
 )
 
 
@@ -113,6 +114,23 @@ def test_normalize_tweet_missing_text_raises():
     raw = {"id": 123, "author": {"userName": "bob"}}
     with pytest.raises(TransformError):
         normalize_tweet(raw)
+
+
+def test_parse_created_at_iso_passthrough():
+    assert parse_created_at("2026-04-15T12:00:00+00:00") == "2026-04-15T12:00:00+00:00"
+
+
+def test_parse_created_at_twitter_legacy():
+    # Regression: day-of-week prefix "Thu" starts with "T", which an earlier
+    # implementation mistook for an ISO separator and returned unchanged.
+    assert parse_created_at("Thu Apr 09 20:10:52 +0000 2026") == "2026-04-09T20:10:52+00:00"
+    assert parse_created_at("Mon Apr 15 10:30:00 +0000 2026") == "2026-04-15T10:30:00+00:00"
+
+
+def test_parse_created_at_empty_and_unknown():
+    assert parse_created_at("") == ""
+    # Unrecognized formats pass through as-is (non-fatal).
+    assert parse_created_at("garbage") == "garbage"
 
 
 def test_normalize_user():

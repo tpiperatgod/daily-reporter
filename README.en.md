@@ -74,6 +74,18 @@ See [Contracts](docs/contracts.md) for the exact integration contract.
 
 See [Commands](docs/commands.md) for command examples and flags.
 
+## Claude Code Skill
+
+The repo ships with a Claude Code skill at [`.claude/skills/twitter-daily-report/`](.claude/skills/twitter-daily-report/SKILL.md) that turns `twx` into an automated daily Tech Twitter digest.
+
+Ask Claude Code for "today's report" / "技术推特日报" and it runs the full pipeline:
+
+1. Fetch a curated set of tech Twitter accounts in parallel (`twx user` × N).
+2. Score each tweet with `♥ + 2×🔁 + 3×💬` and pick headlines.
+3. Render a markdown report at `docs/reports/daily-YYYY-MM-DD.md`.
+
+The account list is encoded in `scripts/fetch_tweets.sh` (`ACCOUNTS`) and `scripts/analyze.py` (`ROLES`, `DISPLAY_NAMES`) — edit both to customize. Personal watchlists under `watchlists/` are gitignored.
+
 ## License
 
 MIT

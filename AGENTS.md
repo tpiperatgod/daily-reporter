@@ -14,7 +14,7 @@ This file provides guidance to AI agents working with code in this repository.
 pip install -e .                              # Install CLI (provides `twx` command)
 pip install -r requirements.txt               # Install all deps (includes pytest, ruff)
 
-pytest tests/twx -v                           # Run all 69 tests
+pytest tests/twx -v                           # Run all 72 tests
 pytest tests/twx/test_transform.py -v         # Run single test file
 pytest tests/twx -k "test_normalize" -v       # Run tests matching pattern
 
@@ -105,6 +105,16 @@ twitterapi.io uses camelCase: `likeCount`, `retweetCount`, `replyCount`, `viewCo
 4. Add Click command in `twx/cli.py` — same try/except pattern as existing commands
 5. Add tests in `tests/twx/test_xxx_command.py` — mock the client, verify envelope structure
 6. Add a `test_repo_cleanup` check if the command removes legacy artifacts
+
+## Companion Skill
+
+`.claude/skills/twitter-daily-report/` is a Claude Code skill that consumes `twx` to generate a daily Tech Twitter digest. It's a separate layer from the CLI: the CLI is the open-source library, the skill is the orchestration on top.
+
+- `SKILL.md` + `scripts/fetch_tweets.sh` + `scripts/analyze.py` + `report-template.md` — tracked in git, part of the open-source release.
+- `scripts/fetch_tweets.sh` holds the `ACCOUNTS` array; `scripts/analyze.py` holds `ROLES` and `DISPLAY_NAMES`. These are the canonical account list — drift between them is the top source of report bugs.
+- `watchlists/*.md` and `docs/daily-report-sop.md` are gitignored personal curation / internal workflow notes. Don't duplicate their content into the skill or CLI docs.
+
+When a user asks for "today's report", "技术推特日报", or similar, the skill is invoked — not the CLI directly. CLI changes that affect the output envelope will break the skill's `analyze.py` parser, so preserve the success-envelope keys religiously.
 
 ## Known Gaps
 

@@ -48,20 +48,26 @@ def normalize_user(raw: dict) -> NormalizedUser:
 
 
 def parse_created_at(value: str) -> str:
-    """Parse and normalize a createdAt timestamp to ISO 8601."""
+    """Parse and normalize a createdAt timestamp to ISO 8601.
+
+    twitterapi.io returns two formats interchangeably:
+      - ISO 8601:      "2026-04-15T12:00:00+00:00"
+      - Twitter legacy: "Mon Apr 15 10:30:00 +0000 2026"
+
+    Normalize both to ISO so downstream string comparisons (e.g. --since /
+    --until filtering) work correctly.
+    """
     if not value:
         return ""
-    # If already ISO-like, return as-is
-    if "T" in value:
-        return value
-    # twitterapi.io sometimes returns format like "Mon Apr 15 10:30:00 +0000 2026"
     from datetime import datetime
 
+    # Try the legacy format first — a simple `"T" in value` check would
+    # misfire on day-of-week prefixes like "Thu" / "Tue" that also contain "T".
     try:
-        dt = datetime.strptime(value, "%a %b %d %H:%M:%S %z %Y")
-        return dt.isoformat()
+        return datetime.strptime(value, "%a %b %d %H:%M:%S %z %Y").isoformat()
     except ValueError:
-        return value
+        pass
+    return value
 
 
 def extract_metrics(raw: dict) -> NormalizedMetrics:
