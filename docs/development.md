@@ -15,7 +15,7 @@ python -m pip install -e '.[dev]'
 Run the full test suite:
 
 ```bash
-pytest tests/twx -v
+pytest tests/twx tests/hnx tests/phx -v
 ```
 
 Run a single test file:
@@ -33,9 +33,9 @@ pytest tests/twx -k "test_normalize" -v
 ## Lint And Format
 
 ```bash
-ruff check twx tests/twx
-ruff format --check twx tests/twx
-ruff format twx tests/twx
+ruff check twx hnx phx tests/twx tests/hnx tests/phx
+ruff format --check twx hnx phx tests/twx tests/hnx tests/phx
+ruff format twx hnx phx tests/twx tests/hnx tests/phx
 ```
 
 ## Project Layout

@@ -1,0 +1,12 @@
+{
+  "by": "pollster",
+  "descendants": 5,
+  "id": 39000200,
+  "kids": [],
+  "parts": [39000201, 39000202],
+  "score": 8,
+  "text": "Which one?",
+  "time": 1713804000,
+  "title": "Poll: A or B?",
+  "type": "poll"
+}

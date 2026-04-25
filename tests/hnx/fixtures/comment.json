@@ -1,0 +1,9 @@
+{
+  "by": "tomte",
+  "id": 39000001,
+  "kids": [39000003],
+  "parent": 39000000,
+  "text": "<p>First.</p>",
+  "time": 1713802000,
+  "type": "comment"
+}

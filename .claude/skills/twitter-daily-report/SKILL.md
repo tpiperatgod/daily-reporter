@@ -1,6 +1,6 @@
 ---
 name: twitter-daily-report
-description: Generate the daily Tech Twitter digest for the x-news-digest / twx project. Use whenever the user asks for the Tech Twitter daily report, tech tweet digest, 技术推特日报, tech twitter 日报, today's Tech Twitter roundup, or any variation that involves pulling tweets from the 29 seed accounts encoded in the skill's scripts (optionally documented in `watchlists/`) and producing a report at docs/reports/daily-YYYY-MM-DD.md. Also use when the user mentions "generate today's report", "run the daily digest", "compile the tweet roundup" — even if they don't explicitly name the skill. This skill owns the full pipeline: loading .env, fetching all seed accounts via `twx` in parallel, scoring tweets with ♥ + 2×🔁 + 3×💬, picking headlines, computing stats, and rendering the markdown report.
+description: Generate the daily Tech Twitter digest for the x-news-digest / twx project. Use whenever the user asks for the Tech Twitter daily report, tech tweet digest, 技术推特日报, tech twitter 日报, today's Tech Twitter roundup, or any variation that involves pulling tweets from the 29 seed accounts encoded in the skill's scripts (optionally documented in `watchlists/`) and producing a report at docs/reports/tw-daily-YYYY-MM-DD.md. Also use when the user mentions "generate today's report", "run the daily digest", "compile the tweet roundup" — even if they don't explicitly name the skill. This skill owns the full pipeline: loading .env, fetching all seed accounts via `twx` in parallel, scoring tweets with ♥ + 2×🔁 + 3×💬, picking headlines, computing stats, and rendering the markdown report.
 ---
 
 # Twitter Daily Report
@@ -26,7 +26,7 @@ The 29-account list and role membership live in the two scripts so the pipeline 
 SINCE ─┘                                                                    │
 UNTIL ─┘                                                                    │
                                                                             ▼
-                          template.md  +  model writes prose  ──► docs/reports/daily-YYYY-MM-DD.md
+                          template.md  +  model writes prose  ──► docs/reports/tw-daily-YYYY-MM-DD.md
 ```
 
 The scripts do the mechanical work (parallel fetch, JSON parsing, scoring, ranking, keyword counting, language ratio). You do the creative work (one-line headlines, tight summaries, background that a non-expert would need).
@@ -87,7 +87,7 @@ Read this file. If `total_tweets` is 0, something is wrong (API auth, date windo
 
 ```bash
 mkdir -p docs/reports
-cp .claude/skills/twitter-daily-report/report-template.md docs/reports/daily-${DATE}.md
+cp .claude/skills/twitter-daily-report/report-template.md docs/reports/tw-daily-${DATE}.md
 ```
 
 Then fill the template by editing that file. You now have:
@@ -113,8 +113,11 @@ Go through `by_role` in order (tech_educator → ai_researcher → thought_leade
 
 For each account block:
 
-- If `tweets` is empty → write exactly `该账号今日无更新` under the `### @{account} — {display_name}` header. Do not delete the block.
+- If `tweets` is empty → **skip the entire `### @{account} — {display_name}` block.** Do not render a placeholder. The report should only contain accounts that actually posted on the day.
+- If every account under a given role has empty `tweets` → **skip that role's entire `## {emoji} {role}` section too** (header + divider). The daily report shouldn't show empty role sections.
 - If tweets exist → render each one with a bold headline, 2-3 sentence summary, and the metrics line. Same judgment rules as headlines, but shorter summaries are fine (1-2 sentences often enough).
+
+The role-count summary in `## 🔗 快速导航` at the bottom still lists all 6 roles (it's a seed-account landscape view, not a daily activity view) — inactive roles just show `当日活跃 = 0`.
 
 **Tone hint**: the whole report is a tech digest — direct, informative, no marketing voice. If a tweet is low-signal (e.g. a one-word reply that somehow gained traction), summarize honestly rather than inventing depth.
 
@@ -132,21 +135,25 @@ Before reporting done, verify:
 
 ```bash
 DATE=<date>
-grep -c "https://x.com/" docs/reports/daily-${DATE}.md   # should match total_tweets + headlines
-grep -c "该账号今日无更新" docs/reports/daily-${DATE}.md   # should equal 29 - active_accounts (roughly)
+REPORT=docs/reports/tw-daily-${DATE}.md
+grep -c "https://x.com/" "$REPORT"            # should match total_tweets + headlines (minus dedup)
+! grep -q "该账号今日无更新" "$REPORT"         # should be absent — inactive accounts are skipped, not placeholder'd
+grep -cE "^### @" "$REPORT"                    # number of rendered account blocks = active_accounts (headlines excluded)
 ```
 
 Then eyeball the file:
 
-- All 6 role sections present, in canonical order.
+- Only roles with at least one active account are rendered; inactive roles are fully skipped.
+- Rendered roles keep the canonical order (tech_educator → ai_researcher → thought_leader → builder → tech_newscaster → practitioner).
 - Headlines from ≤ 5 distinct accounts.
 - Each tweet link has a valid `tweet_id` (not empty, not `{tweet_id}`).
 - Stats table numbers match what's in the body.
+- 🔗 快速导航 table still lists all 6 roles regardless of activity.
 - No stray template placeholders like `{headline}` left over.
 
 ### 6. Report back
 
-Tell the user the output path (`docs/reports/daily-YYYY-MM-DD.md`), the headline count, the active-account count, and one sentence on what the day's theme was. Don't paste the whole report back into chat — that's what the file is for.
+Tell the user the output path (`docs/reports/tw-daily-YYYY-MM-DD.md`), the headline count, the active-account count, and one sentence on what the day's theme was. Don't paste the whole report back into chat — that's what the file is for.
 
 ---
 

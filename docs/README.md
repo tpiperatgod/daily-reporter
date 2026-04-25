@@ -9,6 +9,11 @@ Use this index if you want the detailed documentation instead of the short repos
 - [Contracts](contracts.md): stdout/stderr JSON contract, exit codes, and normalized tweet shape
 - [Limitations](limitations.md): current behavior gaps and implementation caveats
 
+## Sibling CLIs
+
+- [`hnx`](hnx/quickstart.md): JSON-first HackerNews CLI ([commands](hnx/commands.md), [contracts](hnx/contracts.md))
+- [`phx`](phx/quickstart.md): JSON-first Product Hunt CLI ([commands](phx/commands.md), [contracts](phx/contracts.md))
+
 ## Development Docs
 
 - [Development](development.md): local dev install, tests, lint, and project layout

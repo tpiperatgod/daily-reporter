@@ -86,6 +86,14 @@ twx trending --ranking engagement --limit 20
 
 账号清单写在 `scripts/fetch_tweets.sh`(`ACCOUNTS`)和 `scripts/analyze.py`(`ROLES`、`DISPLAY_NAMES`),要自定义就改这两处。个人 watchlist 放在 `watchlists/` 下,默认 gitignore。
 
+## Also in this repo: `hnx`
+
+[`hnx`](docs/hnx/quickstart.md) — a sibling JSON-first CLI that wraps the public [HackerNews API](https://github.com/HackerNews/API). Same install (`pip install -e .`), no API key required. See [`docs/hnx/`](docs/hnx/) for quickstart, commands, and output contracts.
+
+## Also in this repo: `phx`
+
+[`phx`](docs/phx/quickstart.md) — a sibling JSON-first CLI that wraps the official Product Hunt GraphQL API for daily launches and product details. It requires `PRODUCTHUNT_TOKEN`. See [`docs/phx/`](docs/phx/) for quickstart, commands, and output contracts.
+
 ## License
 
 MIT
