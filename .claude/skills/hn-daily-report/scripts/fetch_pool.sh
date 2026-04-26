@@ -27,6 +27,12 @@ NEW_LIMIT="${NEW_LIMIT:-60}"
 CONCURRENCY="${CONCURRENCY:-10}"
 TMP_DIR="${TMP_DIR:-/tmp}"
 
+RESOLVE_ARGS=(--format shell)
+if [ -n "${REPORT_DATE:-${DATE:-}}" ]; then
+  RESOLVE_ARGS+=(--date "${REPORT_DATE:-${DATE:-}}")
+fi
+eval "$(python -m drm.report_window "${RESOLVE_ARGS[@]}")"
+
 command -v hnx >/dev/null 2>&1 || {
   echo "fetch_pool.sh: hnx not found on PATH" >&2
   exit 2
@@ -59,14 +65,35 @@ fi
 
 # Merge + dedupe by id. Keep the first occurrence so `top` wins over `best`,
 # `best` wins over `new` (since jq's unique_by keeps the first in input order).
-jq -s --argjson top_limit "$TOP_LIMIT" --argjson best_limit "$BEST_LIMIT" --argjson new_limit "$NEW_LIMIT" '
+jq -s \
+  --argjson top_limit "$TOP_LIMIT" \
+  --argjson best_limit "$BEST_LIMIT" \
+  --argjson new_limit "$NEW_LIMIT" \
+  --arg report_date "$REPORT_DATE" \
+  --arg report_timezone "$REPORT_TIMEZONE" \
+  --arg date_source "$REPORT_DATE_SOURCE" \
+  --arg since_local "$SINCE_LOCAL" \
+  --arg until_local "$UNTIL_LOCAL" \
+  --arg since_utc "$SINCE_UTC" \
+  --arg until_utc "$UNTIL_UTC" '
+  ([.[].data[]] | unique_by(.id)) as $all |
+  ($all | map(select((.created_at // "") >= $since_utc and (.created_at // "") < $until_utc))) as $filtered |
   {
     ok: (all(.[]; .ok == true)),
-    data: ([.[].data[]] | unique_by(.id)),
+    data: $filtered,
     query: {
       command: "hn-daily-report/fetch_pool",
       sources: ["top", "best", "new"],
-      limits: {top: $top_limit, best: $best_limit, new: $new_limit}
+      limits: {top: $top_limit, best: $best_limit, new: $new_limit},
+      report_date: $report_date,
+      report_timezone: $report_timezone,
+      date_source: $date_source,
+      window: {
+        since_local: $since_local,
+        until_local: $until_local,
+        since_utc: $since_utc,
+        until_utc: $until_utc
+      }
     },
     meta: {
       source_counts: {
@@ -74,10 +101,12 @@ jq -s --argjson top_limit "$TOP_LIMIT" --argjson best_limit "$BEST_LIMIT" --argj
         best: (.[1].data | length),
         new:  (.[2].data | length)
       },
+      candidate_count_before_date_filter: ($all | length),
+      filtered_by_report_window: (($all | length) - ($filtered | length)),
       fetched_at: (now | todate)
     },
     raw: null
   }
 ' "$TOP_FILE" "$BEST_FILE" "$NEW_FILE" > "$OUTPUT"
 
-jq -r '"pool ok=\(.ok) total=\(.data | length) top=\(.meta.source_counts.top) best=\(.meta.source_counts.best) new=\(.meta.source_counts.new)"' "$OUTPUT" >&2
+jq -r '"pool ok=\(.ok) date=\(.query.report_date) total=\(.data | length) top=\(.meta.source_counts.top) best=\(.meta.source_counts.best) new=\(.meta.source_counts.new)"' "$OUTPUT" >&2

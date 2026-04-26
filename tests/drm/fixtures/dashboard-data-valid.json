@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-04-25T09:00:00Z",
+  "source_reports_dir": "docs/reports",
+  "dates": [
+    {
+      "date": "2026-04-25",
+      "summary": "Today centers on model choice and toolchain trust.",
+      "reports": {
+        "twitter": {"status": "missing"},
+        "hackernews": {
+          "status": "available",
+          "source": "hackernews",
+          "date": "2026-04-25",
+          "title": "HN 高价值内容报告 — 2026-04-25",
+          "source_report_path": "docs/reports/hn-daily-2026-04-25.md",
+          "source_locator": {
+            "path": "docs/reports/hn-daily-2026-04-25.md",
+            "heading": "今日判断",
+            "line_start": 9,
+            "anchor": "今日判断"
+          },
+          "card": {
+            "summary": "DeepSeek and Claude Code discussions expose model-evaluation and trust risks.",
+            "highlights": ["DeepSeek benchmarks do not settle coding experience."],
+            "metrics": {"精选": "1"}
+          },
+          "selected_blocks": [
+            {
+              "id": "hn-2026-04-25-deepseek-v4",
+              "title": "DeepSeek V4: benchmark 不等于体验",
+              "kind": "pick",
+              "reason": "Useful for model selection decisions.",
+              "excerpt_markdown": "A short **curated** excerpt with [source](https://news.ycombinator.com/item?id=1).",
+              "source_report_path": "docs/reports/hn-daily-2026-04-25.md",
+              "source_locator": {
+                "path": "docs/reports/hn-daily-2026-04-25.md",
+                "heading": "1. DeepSeek V4",
+                "line_start": 29,
+                "anchor": "1-deepseek-v4"
+              }
+            }
+          ]
+        },
+        "producthunt": {"status": "missing"}
+      }
+    }
+  ],
+  "search_index": [
+    {
+      "query_text": "DeepSeek V4 benchmark coding experience",
+      "title": "DeepSeek V4: benchmark 不等于体验",
+      "date": "2026-04-25",
+      "source": "hackernews",
+      "target_block_id": "hn-2026-04-25-deepseek-v4",
+      "source_report_path": "docs/reports/hn-daily-2026-04-25.md",
+      "source_locator": {
+        "path": "docs/reports/hn-daily-2026-04-25.md",
+        "line_start": 29,
+        "anchor": "1-deepseek-v4"
+      }
+    }
+  ]
+}

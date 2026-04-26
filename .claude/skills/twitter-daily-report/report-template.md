@@ -1,6 +1,10 @@
 # Tech Twitter 日报 — {YYYY-MM-DD}
 
 > 数据来源：[tech-twitter-accounts.md](./tech-twitter-accounts.md) 收录的 {total_accounts} 个 seed accounts
+> 报告日期：{report_date}
+> 报告时区：Asia/Shanghai
+> 数据窗口：{since_local} ～ {until_local}
+> 生成时间：{generated_at}
 
 ---
 

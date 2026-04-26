@@ -38,12 +38,13 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["twx*", "hnx*", "phx*"]
+include = ["twx*", "hnx*", "phx*", "drm*"]
 
 [project.scripts]
 twx = "twx.cli:cli"
 hnx = "hnx.cli:cli"
 phx = "phx.cli:cli"
+drm = "drm.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/tpiperatgod/twx"
@@ -63,7 +64,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.pytest.ini_options]
-testpaths = ["tests/twx", "tests/hnx", "tests/phx", "tests/skills"]
+testpaths = ["tests/twx", "tests/hnx", "tests/phx", "tests/skills", "tests/drm"]
 addopts = "--strict-markers"
 asyncio_mode = "auto"
 markers = [

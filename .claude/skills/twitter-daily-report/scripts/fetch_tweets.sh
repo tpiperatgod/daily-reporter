@@ -16,9 +16,17 @@
 set -u
 
 OUT_DIR="${1:-/tmp/twx_raw}"
-SINCE="${SINCE:?SINCE is required, e.g. 2026-04-22T00:00:00Z}"
-UNTIL="${UNTIL:?UNTIL is required, e.g. 2026-04-23T00:00:00Z}"
 LIMIT="${LIMIT:-20}"
+
+if [[ -z "${SINCE:-}" || -z "${UNTIL:-}" ]]; then
+  RESOLVE_ARGS=(--format shell)
+  if [[ -n "${REPORT_DATE:-${DATE:-}}" ]]; then
+    RESOLVE_ARGS+=(--date "${REPORT_DATE:-${DATE:-}}")
+  fi
+  eval "$(python -m drm.report_window "${RESOLVE_ARGS[@]}")"
+  SINCE="${SINCE:-$SINCE_UTC}"
+  UNTIL="${UNTIL:-$UNTIL_UTC}"
+fi
 
 mkdir -p "$OUT_DIR"
 
@@ -37,7 +45,7 @@ if [[ -z "${TWITTER_API_KEY:-}" ]]; then
   exit 2
 fi
 
-echo "fetching ${#ACCOUNTS[@]} accounts into $OUT_DIR (since=$SINCE until=$UNTIL limit=$LIMIT)" >&2
+echo "fetching ${#ACCOUNTS[@]} accounts into $OUT_DIR (report_date=${REPORT_DATE:-} timezone=${REPORT_TIMEZONE:-} since=$SINCE until=$UNTIL limit=$LIMIT)" >&2
 
 for acct in "${ACCOUNTS[@]}"; do
   twx user \

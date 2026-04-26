@@ -15,9 +15,14 @@
 set -euo pipefail
 
 OUTPUT="${1:-/tmp/phx_launches.json}"
-DATE="${DATE:-}"
 LAUNCH_LIMIT="${LAUNCH_LIMIT:-30}"
 TMP_DIR="${TMP_DIR:-/tmp}"
+
+RESOLVE_ARGS=(--format shell)
+if [ -n "${REPORT_DATE:-${DATE:-}}" ]; then
+  RESOLVE_ARGS+=(--date "${REPORT_DATE:-${DATE:-}}")
+fi
+eval "$(python -m drm.report_window "${RESOLVE_ARGS[@]}")"
 
 command -v phx >/dev/null 2>&1 || {
   echo "fetch_launches.sh: phx not found on PATH" >&2
@@ -30,10 +35,7 @@ command -v jq >/dev/null 2>&1 || {
 
 RAW_FILE="${TMP_DIR}/phx_launches_raw_$$.json"
 
-ARGS=(launches --limit "$LAUNCH_LIMIT")
-if [ -n "$DATE" ]; then
-  ARGS+=(--date "$DATE")
-fi
+ARGS=(launches --limit "$LAUNCH_LIMIT" --after "$SINCE_UTC" --before "$UNTIL_UTC")
 
 if ! phx "${ARGS[@]}" > "$RAW_FILE"; then
   echo "fetch_launches.sh: phx launches failed" >&2
@@ -46,7 +48,13 @@ if ! jq -e '.ok == true and (.data | type == "array") and (.data | length > 0)' 
 fi
 
 jq \
-  --arg requested_date "$DATE" \
+  --arg report_date "$REPORT_DATE" \
+  --arg report_timezone "$REPORT_TIMEZONE" \
+  --arg date_source "$REPORT_DATE_SOURCE" \
+  --arg since_local "$SINCE_LOCAL" \
+  --arg until_local "$UNTIL_LOCAL" \
+  --arg since_utc "$SINCE_UTC" \
+  --arg until_utc "$UNTIL_UTC" \
   --argjson launch_limit "$LAUNCH_LIMIT" \
   '{
     ok: true,
@@ -55,9 +63,18 @@ jq \
     },
     query: {
       command: "ph-daily-report/fetch_launches",
-      date: ($requested_date | if . == "" then null else . end),
-      resolved_date: .query.date,
-      launch_limit: $launch_limit
+      date: $report_date,
+      resolved_date: $report_date,
+      report_timezone: $report_timezone,
+      date_source: $date_source,
+      launch_limit: $launch_limit,
+      window: {
+        since_local: $since_local,
+        until_local: $until_local,
+        since_utc: $since_utc,
+        until_utc: $until_utc
+      },
+      source_query: .query
     },
     meta: {
       launch_count: (.data | length),

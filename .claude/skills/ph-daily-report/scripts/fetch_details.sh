@@ -158,6 +158,9 @@ jq \
       command: "ph-daily-report/fetch_details",
       date: .query.date,
       resolved_date: .query.resolved_date,
+      report_timezone: .query.report_timezone,
+      date_source: .query.date_source,
+      window: .query.window,
       launch_limit: .query.launch_limit,
       detail_slugs: $detail_slugs
     },

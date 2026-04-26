@@ -35,19 +35,19 @@ The scripts do the mechanical work (parallel fetch, JSON parsing, scoring, ranki
 
 ## Step-by-step
 
-### 1. Load env + pick the date window
+### 1. Load env + pick the report date/window
 
 ```bash
 cd <project root>
 set -a && source .env && set +a
 
-DATE="${DATE:-$(date -u -v-1d +%Y-%m-%d)}"   # default: yesterday UTC
-SINCE="${DATE}T00:00:00Z"
-UNTIL="$(date -u -v+1d -jf '%Y-%m-%d' "$DATE" +%Y-%m-%d)T00:00:00Z"
-echo "date=$DATE since=$SINCE until=$UNTIL"
+eval "$(python -m drm.report_window \
+  ${REPORT_DATE:+--date "$REPORT_DATE"} \
+  --format shell)"
+echo "report_date=$REPORT_DATE timezone=$REPORT_TIMEZONE since=$SINCE_UTC until=$UNTIL_UTC"
 ```
 
-If the user names a specific date ("给我 2026-04-22 的日报"), use that as `DATE`. Otherwise default to yesterday (UTC) — today's tweets are incomplete.
+If the user names a specific date ("给我 2026-04-22 的日报"), set `REPORT_DATE=2026-04-22`. Otherwise default to yesterday in `Asia/Shanghai` — today's reports are incomplete.
 
 Sanity-check the API key before fetching all 29 accounts:
 
@@ -61,7 +61,7 @@ If it prints `FAIL`, stop and tell the user to check `TWITTER_API_KEY` in `.env`
 ### 2. Fetch all accounts in parallel
 
 ```bash
-SINCE="$SINCE" UNTIL="$UNTIL" \
+REPORT_DATE="$REPORT_DATE" \
   .claude/skills/twitter-daily-report/scripts/fetch_tweets.sh /tmp/twx_raw
 ```
 
@@ -87,7 +87,7 @@ Read this file. If `total_tweets` is 0, something is wrong (API auth, date windo
 
 ```bash
 mkdir -p docs/reports
-cp .claude/skills/twitter-daily-report/report-template.md docs/reports/tw-daily-${DATE}.md
+cp .claude/skills/twitter-daily-report/report-template.md docs/reports/tw-daily-${REPORT_DATE}.md
 ```
 
 Then fill the template by editing that file. You now have:
@@ -134,8 +134,8 @@ Read straight from `stats` and `navigation`. Formats:
 Before reporting done, verify:
 
 ```bash
-DATE=<date>
-REPORT=docs/reports/tw-daily-${DATE}.md
+REPORT_DATE=<date>
+REPORT=docs/reports/tw-daily-${REPORT_DATE}.md
 grep -c "https://x.com/" "$REPORT"            # should match total_tweets + headlines (minus dedup)
 ! grep -q "该账号今日无更新" "$REPORT"         # should be absent — inactive accounts are skipped, not placeholder'd
 grep -cE "^### @" "$REPORT"                    # number of rendered account blocks = active_accounts (headlines excluded)

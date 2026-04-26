@@ -64,9 +64,13 @@ If the user specifies a theme ("AI infra", "developer tools", "security", "start
 
 ```bash
 cd <project root>
-DATE="${DATE:-$(date -u +%Y-%m-%d)}"
+eval "$(python -m drm.report_window \
+  ${REPORT_DATE:+--date "$REPORT_DATE"} \
+  --format shell)"
 .claude/skills/hn-daily-report/scripts/fetch_pool.sh /tmp/hnx_pool.json
 ```
+
+If the user names a specific date, set `REPORT_DATE=YYYY-MM-DD`. Otherwise the shared resolver defaults to yesterday in `Asia/Shanghai`. `fetch_pool.sh` filters hydrated HN items to the shared Beijing report window before writing `/tmp/hnx_pool.json`.
 
 Default pool sizes: `top=80`, `best=80`, `new=60`. Override with env vars if the user asks for a lighter or deeper sweep:
 
@@ -160,10 +164,10 @@ Create the report file from the template:
 
 ```bash
 mkdir -p docs/reports
-cp .claude/skills/hn-daily-report/report-template.md "docs/reports/hn-daily-${DATE}.md"
+cp .claude/skills/hn-daily-report/report-template.md "docs/reports/hn-daily-${REPORT_DATE}.md"
 ```
 
-Then edit `docs/reports/hn-daily-${DATE}.md` to fill every placeholder. Per-entry structure is already in the template — keep the section order: 类型 → 原文 → HN 讨论 → HN 信号 → 为什么值得读 → 核心洞察 → 争论脉络 → 实操启发 → 证据 → 注意边界.
+Then edit `docs/reports/hn-daily-${REPORT_DATE}.md` to fill every placeholder. Per-entry structure is already in the template — keep the section order: 类型 → 原文 → HN 讨论 → HN 信号 → 为什么值得读 → 核心洞察 → 争论脉络 → 实操启发 → 证据 → 注意边界.
 
 Writing rules:
 
@@ -180,8 +184,8 @@ Writing rules:
 Before declaring done, verify:
 
 ```bash
-DATE=<date>
-REPORT="docs/reports/hn-daily-${DATE}.md"
+REPORT_DATE=<date>
+REPORT="docs/reports/hn-daily-${REPORT_DATE}.md"
 
 grep -c "news.ycombinator.com/item" "$REPORT"   # should be ≥ 3 * included + evidence links
 grep -n "{.*}" "$REPORT"                         # should return nothing — no leftover placeholders

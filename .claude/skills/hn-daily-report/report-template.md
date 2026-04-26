@@ -3,6 +3,10 @@
 > 数据来源：`hnx top` / `hnx best` / `hnx new` 候选池 + `hnx thread` 评论树  
 > 目标读者：{target_reader}  
 > 筛选原则：只收录能帮助读者做技术、产品、架构或行业判断的讨论；`score` 和 `comment_count` 只作为注意力信号，不作为入选理由。
+> 报告日期：{report_date}
+> 报告时区：Asia/Shanghai
+> 数据窗口：{since_local} ～ {until_local}
+> 生成时间：{generated_at}
 
 ---
 

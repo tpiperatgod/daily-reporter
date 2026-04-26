@@ -34,6 +34,7 @@ def fake_path(tmp_path: Path) -> Path:
             """\
             #!/usr/bin/env python3
             import json
+            import os
             import sys
 
             launches = [
@@ -115,6 +116,16 @@ def fake_path(tmp_path: Path) -> Path:
             }
 
             if len(sys.argv) >= 2 and sys.argv[1] == "launches":
+                expected_after = os.environ.get("EXPECTED_AFTER")
+                expected_before = os.environ.get("EXPECTED_BEFORE")
+                if expected_after:
+                    if "--after" not in sys.argv or sys.argv[sys.argv.index("--after") + 1] != expected_after:
+                        print(f"bad --after args: {sys.argv[1:]}", file=sys.stderr)
+                        raise SystemExit(17)
+                if expected_before:
+                    if "--before" not in sys.argv or sys.argv[sys.argv.index("--before") + 1] != expected_before:
+                        print(f"bad --before args: {sys.argv[1:]}", file=sys.stderr)
+                        raise SystemExit(18)
                 print(json.dumps({
                     "ok": True,
                     "data": launches,
@@ -179,14 +190,26 @@ def run_script(
 def test_fetch_launches_emits_launch_pool(tmp_path: Path, fake_path: Path):
     output = tmp_path / "launches.json"
 
-    result = run_script(FETCH_LAUNCHES, str(output), fake_path=fake_path)
+    result = run_script(
+        FETCH_LAUNCHES,
+        str(output),
+        fake_path=fake_path,
+        env={
+            "REPORT_DATE": "2026-04-25",
+            "EXPECTED_AFTER": "2026-04-24T16:00:00+00:00",
+            "EXPECTED_BEFORE": "2026-04-25T16:00:00+00:00",
+        },
+    )
 
     assert result.returncode == 0, result.stderr
     doc = json.loads(output.read_text())
     assert doc["ok"] is True
     assert doc["data"]["launches"][0]["slug"] == "agent-workbench"
     assert doc["query"]["command"] == "ph-daily-report/fetch_launches"
-    assert doc["query"]["resolved_date"] == "2026-04-24"
+    assert doc["query"]["resolved_date"] == "2026-04-25"
+    assert doc["query"]["report_timezone"] == "Asia/Shanghai"
+    assert doc["query"]["window"]["since_utc"] == "2026-04-24T16:00:00+00:00"
+    assert doc["query"]["window"]["until_utc"] == "2026-04-25T16:00:00+00:00"
     assert doc["meta"]["launch_count"] == 2
 
 

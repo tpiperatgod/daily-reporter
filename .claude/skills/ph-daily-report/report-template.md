@@ -3,6 +3,10 @@
 > 数据来源：`phx launches` + `phx product`  
 > 输出语言：产品名、tagline、topics、makers 和原始链接保留英文；判断与分析用中文。  
 > 筛选原则：rank / votes / comments 是注意力信号，不是最终入选理由。
+> 报告日期：{report_date}
+> 报告时区：Asia/Shanghai
+> 数据窗口：{since_local} ～ {until_local}
+> 生成时间：{generated_at}
 
 ---
 

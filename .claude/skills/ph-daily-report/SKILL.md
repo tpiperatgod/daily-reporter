@@ -73,9 +73,12 @@ If this fails, stop and report the `phx` / `PRODUCTHUNT_TOKEN` problem. Do not w
 
 ### 2. Fetch launch pool
 
-If the user specified a date, set `DATE=YYYY-MM-DD`. Otherwise leave `DATE` unset so `phx` resolves the current Product Hunt day in `America/Los_Angeles`.
+If the user specified a date, set `REPORT_DATE=YYYY-MM-DD`. Otherwise leave it unset so the shared resolver defaults to yesterday in `Asia/Shanghai`. The script calls `phx launches --after/--before` with the Beijing report window; it does not use Product Hunt's LA default day.
 
 ```bash
+eval "$(python -m drm.report_window \
+  ${REPORT_DATE:+--date "$REPORT_DATE"} \
+  --format shell)"
 LAUNCH_LIMIT="${LAUNCH_LIMIT:-30}" \
   .claude/skills/ph-daily-report/scripts/fetch_launches.sh /tmp/phx_launches.json
 ```
