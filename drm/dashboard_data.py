@@ -33,7 +33,7 @@ LIMIT_QUERY_TEXT = 240
 LIMIT_REASON_NO_BLOCKS = 180
 MAX_HIGHLIGHTS = 5
 MAX_METRICS = 4
-MAX_BLOCKS = 8
+MAX_BLOCKS = 15
 
 
 def load_dashboard_data(path: Path) -> dict[str, Any]:

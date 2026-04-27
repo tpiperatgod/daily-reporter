@@ -105,6 +105,21 @@ def test_available_report_requires_zero_block_reason() -> None:
         validate_dashboard_data(data)
 
 
+def test_selected_blocks_exceeding_max_fails() -> None:
+    data = load_fixture()
+    report = data["dates"][0]["reports"]["hackernews"]
+    base_block = report["selected_blocks"][0]
+    extra = []
+    for i in range(15):
+        clone = json.loads(json.dumps(base_block))
+        clone["id"] = f"hn-2026-04-25-deepseek-v4-{i + 2}"
+        extra.append(clone)
+    report["selected_blocks"] = [base_block, *extra]
+
+    with pytest.raises(InputError, match="exceeds 15"):
+        validate_dashboard_data(data)
+
+
 def test_oversized_excerpt_fails() -> None:
     data = load_fixture()
     block = data["dates"][0]["reports"]["hackernews"]["selected_blocks"][0]
