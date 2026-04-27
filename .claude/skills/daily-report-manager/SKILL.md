@@ -23,9 +23,20 @@ The `drm` CLI is the deterministic renderer. This skill owns the AI judgment tha
 
 3. **Read the schema reference.** Before writing JSON, read `references/dashboard-schema.md`. It contains the field shapes, status rules, and size limits the validator enforces.
 
-4. **Write `docs/dashboard/dashboard-data.json`.** Apply the curation rules below. Preserve every discovered date and every source slot per date. Always include `twitter`, `hackernews`, and `producthunt` keys, even when a source is missing.
+4. **Ask the user for the block limit.** Before curating, use the `question` tool to ask:
 
-5. **Validate the JSON.** Validation must pass before rendering. The validator cross-checks paths and locators against the inventory.
+   > "Each source can have up to 15 selected blocks. How many do you want per source for this run?"
+
+   Options to present:
+   - "Default (15)" — maximum signal, content-rich days
+   - "10" — balanced
+   - "5" — concise
+
+   If the user picks "Default" or does not answer, set `max_blocks = 15`. Store this value for the next step. `max_blocks` is a soft constraint that guides curation only; the validator's hard cap is 15.
+
+5. **Write `docs/dashboard/dashboard-data.json`.** Apply the curation rules below. Preserve every discovered date and every source slot per date. Always include `twitter`, `hackernews`, and `producthunt` keys, even when a source is missing.
+
+6. **Validate the JSON.** Validation must pass before rendering. The validator cross-checks paths and locators against the inventory.
 
    ```bash
    python .claude/skills/daily-report-manager/scripts/validate_dashboard_data.py \
@@ -33,7 +44,7 @@ The `drm` CLI is the deterministic renderer. This skill owns the AI judgment tha
      --inventory /tmp/drm-report-inventory.json
    ```
 
-6. **Render the dashboard.**
+7. **Render the dashboard.**
 
    ```bash
    drm dashboard build \
@@ -64,7 +75,7 @@ These rules exist because the dashboard is a high-signal reading surface, not a 
 
 ### Per selected block
 
-- Select 1–8 blocks per available report when the report has signal. Hard cap is 8.
+- Select 1 to `max_blocks` blocks per available report when the report has signal. Hard cap is 15 (validator enforced). Default `max_blocks` is 15. When a report has sufficient signal, aim close to `max_blocks` rather than defaulting to 3–5 blocks.
 - Prefer blocks with decision value, cross-source relevance, unusually high signal, or future-reference value.
 - Avoid empty-update blocks like `该账号今日无更新`, template scaffolding, or pure structural sections with no reader value.
 - Use stable IDs in the form `{source}-{date}-{slug}` so links remain valid across rebuilds.
