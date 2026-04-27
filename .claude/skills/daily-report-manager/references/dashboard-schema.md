@@ -90,7 +90,7 @@ No `card`, `selected_blocks`, or `source_report_path` allowed.
 | `card.summary` | ≤ 280 visible chars. May be empty. |
 | `card.highlights` | 0–5 strings, each ≤ 120 chars. |
 | `card.metrics` | 0–4 entries; keys/values each ≤ 40 chars. |
-| `selected_blocks` | 0–8 entries. |
+| `selected_blocks` | 0–15 entries. |
 
 If `selected_blocks` is empty, add `x_reason_no_blocks` (≤ 180 chars) explaining why.
 
