@@ -23,16 +23,18 @@ The `drm` CLI is the deterministic renderer. This skill owns the AI judgment tha
 
 3. **Read the schema reference.** Before writing JSON, read `references/dashboard-schema.md`. It contains the field shapes, status rules, and size limits the validator enforces.
 
-4. **Ask the user for the block limit.** Before curating, use the `question` tool to ask:
+4. **Ask the user for the per-source block limit.** Before curating, use the `question` tool to ask:
 
-   > "Each source can have up to 15 selected blocks. How many do you want per source for this run?"
+   > "Each source (`twitter`, `hackernews`, `producthunt`) is curated **independently** and can have up to 15 selected blocks. With all 3 sources available, that means up to **45 blocks per date** (15 × 3), not 15 total. How many blocks **per source** do you want for this run?"
 
    Options to present:
-   - "Default (15)" — maximum signal, content-rich days
-   - "10" — balanced
-   - "5" — concise
+   - "15 per source" — maximum signal, content-rich days (up to 45 blocks/date)
+   - "10 per source" — balanced (up to 30 blocks/date)
+   - "5 per source" — concise (up to 15 blocks/date)
 
-   If the user picks "Default" or does not answer, set `max_blocks = 15`. Store this value for the next step. `max_blocks` is a soft constraint that guides curation only; the validator's hard cap is 15.
+   If the user picks the first option or does not answer, set `max_blocks = 15`. Store this value for the next step.
+
+   `max_blocks` is the **per-source per-date target**, not a total budget. The same value applies independently to every source slot on every date. The validator's hard cap is 15 per source per date.
 
 5. **Write `docs/dashboard/dashboard-data.json`.** Apply the curation rules below. Preserve every discovered date and every source slot per date. Always include `twitter`, `hackernews`, and `producthunt` keys, even when a source is missing.
 
@@ -75,7 +77,9 @@ These rules exist because the dashboard is a high-signal reading surface, not a 
 
 ### Per selected block
 
-- Select 1 to `max_blocks` blocks per available report when the report has signal. Hard cap is 15 (validator enforced). Default `max_blocks` is 15. When a report has sufficient signal, aim close to `max_blocks` rather than defaulting to 3–5 blocks.
+- `max_blocks` applies **per source per date, independently**. A date with all three sources available should aim for up to `max_blocks × 3` total blocks across the date, not `max_blocks` total. Do not divide `max_blocks` across sources.
+- For each available source on each date, select 1 to `max_blocks` blocks when the source has signal. Hard cap is 15 (validator enforced, per source). Default `max_blocks` is 15. When a source has sufficient signal, aim close to `max_blocks` rather than defaulting to 3–5 blocks.
+- Worked example with `max_blocks = 15`: a date where `twitter` has 12 signal-bearing accounts, `hackernews` has 9 high-signal stories, and `producthunt` has 7 launches worth covering should produce roughly 12 + 9 + 7 = 28 blocks for the date. Truncate per source only when that source's signal runs out, never to keep the date's total down.
 - Prefer blocks with decision value, cross-source relevance, unusually high signal, or future-reference value.
 - Avoid empty-update blocks like `该账号今日无更新`, template scaffolding, or pure structural sections with no reader value.
 - Use stable IDs in the form `{source}-{date}-{slug}` so links remain valid across rebuilds.
