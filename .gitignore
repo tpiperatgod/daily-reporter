@@ -46,6 +46,7 @@ htmlcov/
 !.claude/skills/twitter-daily-report/watchlists/README.md
 !.claude/skills/hn-daily-report/
 !.claude/skills/ph-daily-report/
+!.claude/skills/daily-report-manager/
 .mcp.json
 /.serena/
 /.sisyphus/
